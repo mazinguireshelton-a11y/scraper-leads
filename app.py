@@ -11,6 +11,9 @@ import os
 from io import BytesIO
 from bs4 import BeautifulSoup
 
+# set_page_config precisa ser o PRIMEIRO comando Streamlit do script
+st.set_page_config(page_title="Prospeção B2B com IA", page_icon="🚀", layout="wide")
+
 # Tenta carregar o dotenv para testes locais
 try:
     from dotenv import load_dotenv
@@ -27,95 +30,99 @@ from reportlab.lib.styles import getSampleStyleSheet
 try:
     RAPIDAPI_KEY = st.secrets.get("RAPIDAPI_KEY", os.getenv("RAPIDAPI_KEY", ""))
     OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", os.getenv("OPENROUTER_API_KEY", ""))
-    GMAIL_ENDERECO = st.secrets.get("GMAIL_ENDERECO", os.getenv("GMAIL_ENDERECO", ""))
-    GMAIL_APP_PASSWORD = st.secrets.get("GMAIL_APP_PASSWORD", os.getenv("GMAIL_APP_PASSWORD", ""))
 except Exception:
     RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "")
     OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-    GMAIL_ENDERECO = os.getenv("GMAIL_ENDERECO", "")
-    GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")
 
 SEARCH_URL = "https://local-business-data.p.rapidapi.com/search"
 # URL CORRETO DO OPENROUTER
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-# --- CONTROLE DE ACESSO POR CLIENTE ---
-# Configura os clientes em .streamlit/secrets.toml (local) ou em
-# "Settings > Secrets" no Streamlit Cloud, neste formato:
-#
-# [clientes]
-# chave123 = { nome = "Cliente A", limite_diario = 20 }
-# chave456 = { nome = "Cliente B", limite_diario = 50 }
-#
-import json
+# --- CONTROLE DE ACESSO REAL: Supabase (cadastro + login + limite persistente) ---
+from supabase import create_client
 from datetime import date
 
-ARQUIVO_USO = "uso_diario.json"
+try:
+    SUPABASE_URL = st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL", ""))
+    SUPABASE_SERVICE_KEY = st.secrets.get("SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_SERVICE_KEY", ""))
+except Exception:
+    SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+    SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 
-def carregar_clientes():
-    try:
-        return dict(st.secrets.get("clientes", {}))
-    except Exception:
-        return {}
+LIMITE_DIARIO_PADRAO = 10  # aplicado a clientes novos; ajustável depois direto na tabela "clientes" no Supabase
 
-def carregar_uso():
-    if os.path.exists(ARQUIVO_USO):
-        try:
-            with open(ARQUIVO_USO, "r") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
+@st.cache_resource
+def get_supabase():
+    return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-def salvar_uso(dados):
-    try:
-        with open(ARQUIVO_USO, "w") as f:
-            json.dump(dados, f)
-    except Exception:
-        pass  # não trava o app se não conseguir gravar (ex: filesystem read-only)
+def garantir_registro_cliente(user_id, email):
+    """Cria a linha do cliente na tabela 'clientes' se ainda não existir."""
+    sb = get_supabase()
+    existente = sb.table("clientes").select("*").eq("id", user_id).execute()
+    if not existente.data:
+        sb.table("clientes").insert({
+            "id": user_id, "email": email, "limite_diario": LIMITE_DIARIO_PADRAO
+        }).execute()
 
-def verificar_e_registrar_uso(chave):
-    """Retorna (permitido: bool, mensagem: str)."""
-    uso = carregar_uso()
+def verificar_e_registrar_uso(user_id):
+    """Retorna (permitido: bool, mensagem: str). Uso salvo no Supabase - não zera ao reiniciar o app."""
+    sb = get_supabase()
     hoje = str(date.today())
-    registro = uso.get(chave, {"data": hoje, "contagem": 0})
 
-    if registro["data"] != hoje:
-        registro = {"data": hoje, "contagem": 0}
+    cliente = sb.table("clientes").select("limite_diario").eq("id", user_id).execute()
+    limite = cliente.data[0]["limite_diario"] if cliente.data else LIMITE_DIARIO_PADRAO
 
-    clientes = carregar_clientes()
-    limite = clientes.get(chave, {}).get("limite_diario", 10)
+    registro = sb.table("uso_diario").select("*").eq("user_id", user_id).eq("data", hoje).execute()
 
-    if registro["contagem"] >= limite:
-        return False, f"Limite diário de {limite} buscas atingido. Volta amanhã ou fala com o suporte."
+    if registro.data:
+        contagem = registro.data[0]["contagem"]
+        if contagem >= limite:
+            return False, f"Limite diário de {limite} buscas atingido. Volta amanhã."
+        sb.table("uso_diario").update({"contagem": contagem + 1}).eq("user_id", user_id).eq("data", hoje).execute()
+        restantes = limite - (contagem + 1)
+    else:
+        sb.table("uso_diario").insert({"user_id": user_id, "data": hoje, "contagem": 1}).execute()
+        restantes = limite - 1
 
-    registro["contagem"] += 1
-    uso[chave] = registro
-    salvar_uso(uso)
-    restantes = limite - registro["contagem"]
     return True, f"{restantes} buscas restantes hoje."
 
 def tela_login():
-    st.title("🔐 Acesso Restrito")
-    st.caption("Este é um serviço pago. Insere a tua chave de acesso.")
-    chave_input = st.text_input("Chave de acesso", type="password")
-    if st.button("Entrar", type="primary"):
-        clientes = carregar_clientes()
-        if chave_input in clientes:
-            st.session_state["autenticado"] = True
-            st.session_state["chave_cliente"] = chave_input
-            st.session_state["nome_cliente"] = clientes[chave_input].get("nome", "Cliente")
-            st.rerun()
-        else:
-            st.error("Chave inválida. Confirma com quem te vendeu o acesso.")
+    st.title("🔐 Acesso")
+    st.caption("Cria conta ou entra com o teu e-mail e senha.")
+
+    aba_entrar, aba_criar = st.tabs(["Entrar", "Criar conta"])
+    sb = get_supabase()
+
+    with aba_entrar:
+        email = st.text_input("E-mail", key="login_email")
+        senha = st.text_input("Senha", type="password", key="login_senha")
+        if st.button("Entrar", type="primary", key="btn_entrar"):
+            try:
+                resp = sb.auth.sign_in_with_password({"email": email, "password": senha})
+                garantir_registro_cliente(resp.user.id, email)
+                st.session_state["autenticado"] = True
+                st.session_state["chave_cliente"] = resp.user.id
+                st.session_state["nome_cliente"] = email
+                st.rerun()
+            except Exception as e:
+                st.error("E-mail ou senha inválidos, ou o e-mail ainda não foi confirmado.")
+
+    with aba_criar:
+        novo_email = st.text_input("E-mail", key="cad_email")
+        nova_senha = st.text_input("Senha (mínimo 6 caracteres)", type="password", key="cad_senha")
+        if st.button("Criar conta", type="primary", key="btn_criar"):
+            try:
+                sb.auth.sign_up({"email": novo_email, "password": nova_senha})
+                st.success("Conta criada! Confirma o link enviado pro teu e-mail antes de entrar.")
+            except Exception as e:
+                st.error(f"Erro ao criar conta: {e}")
+
     st.stop()
 
 if "autenticado" not in st.session_state:
     tela_login()
 
-# --- CONFIGURAÇÃO DA PÁGINA E ESTILO VISUAL (CSS) ---
-st.set_page_config(page_title="Prospeção B2B com IA", page_icon="🚀", layout="wide")
-
+# --- ESTILO VISUAL (CSS) ---
 st.markdown("""
     <style>
     .main {background-color: #f8f9fa;}
@@ -344,11 +351,12 @@ if not RAPIDAPI_KEY or not OPENROUTER_API_KEY:
 
 with st.sidebar:
     st.divider()
-    st.subheader("📧 Envio por Gmail")
-    GMAIL_ENDERECO = st.text_input("Teu Gmail", value=GMAIL_ENDERECO, placeholder="tuemail@gmail.com")
-    GMAIL_APP_PASSWORD = st.text_input("Senha de App do Gmail", value=GMAIL_APP_PASSWORD, type="password",
-                                        help="Não é a senha normal! Gera em: myaccount.google.com → Segurança → Senhas de app (precisa de verificação em 2 etapas ativada)")
-    st.caption("As credenciais não são salvas — só usadas durante essa sessão.")
+    st.subheader("📧 Teu Gmail (pra enviar propostas)")
+    st.caption("Cada pessoa usa o próprio Gmail — os e-mails saem em teu nome, não do dono do app.")
+    GMAIL_ENDERECO = st.text_input("Teu Gmail", placeholder="tuemail@gmail.com")
+    GMAIL_APP_PASSWORD = st.text_input("Senha de App do teu Gmail", type="password",
+                                        help="Não é a senha normal! Gera em: myaccount.google.com → Segurança → Senhas de app (precisa de verificação em 2 etapas ativada na TUA conta Google)")
+    st.caption("As credenciais não são salvas em nenhum lugar — ficam só nesta sessão do navegador e somem quando fechares a página.")
 
 st.divider()
 
@@ -443,4 +451,4 @@ if 'leads' in st.session_state:
                        file_name="leads.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
     b3.download_button("📕 Relatório PDF", data=criar_pdf(st.session_state['leads'], st.session_state['n'], st.session_state['r']), 
                        file_name="leads.pdf", mime="application/pdf", use_container_width=True)
-                    
+        
