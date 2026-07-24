@@ -1,113 +1,150 @@
 """
-SCRAPER DE LEADS - APP (versão RapidAPI - Sem Cartão de Crédito)
+SCRAPER DE LEADS PREMIUM - APP (RapidAPI + Web Scraping)
 -----------------------------------------------------
 """
 
 import streamlit as st
 import pandas as pd
 import requests
+import re
+from bs4 import BeautifulSoup
 
-# Novo URL da API "Local Business Data"
 SEARCH_URL = "https://local-business-data.p.rapidapi.com/search"
 
-st.set_page_config(page_title="Scraper de Leads (RapidAPI)", page_icon="🔍", layout="centered")
+st.set_page_config(page_title="Scraper Premium de Leads", page_icon="🚀", layout="wide")
 
-def buscar_lugares_rapidapi(query: str, api_key: str, max_results: int, progress_callback=None):
-    # Configuração dos cabeçalhos exigidos pelo RapidAPI
+def extrair_email_do_site(url):
+    if not url or url == "N/A":
+        return ""
+    try:
+        # Finge ser um navegador real para não ser bloqueado
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        # Timeout curto (3 segundos) para o app não ficar travado se o site estiver fora do ar
+        resposta = requests.get(url, headers=headers, timeout=3)
+        
+        # Expressão regular para encontrar qualquer coisa com formato de e-mail
+        emails_encontrados = set(re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", resposta.text))
+        
+        # Filtra falsos positivos comuns (como extensões de imagens)
+        emails_validos = [e for e in emails_encontrados if not e.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))]
+        
+        return ", ".join(emails_validos[:2]) # Devolve no máximo 2 e-mails
+    except:
+        return ""
+
+def gerar_link_whatsapp(telefone):
+    if not telefone:
+        return ""
+    # Remove todos os espaços e traços, deixando só os números
+    numero_limpo = re.sub(r'\D', '', telefone)
+    if numero_limpo:
+        return f"https://wa.me/{numero_limpo}"
+    return ""
+
+def buscar_lugares_rapidapi(query: str, api_key: str, max_results: int, nicho: str, regiao: str, progress_callback=None):
     headers = {
         "x-rapidapi-key": api_key,
         "x-rapidapi-host": "local-business-data.p.rapidapi.com"
     }
-    
-    # Parâmetros da busca (query, limite de resultados e idioma)
-    querystring = {
-        "query": query, 
-        "limit": str(max_results), 
-        "language": "pt"
-    }
+    querystring = {"query": query, "limit": str(max_results), "language": "pt"}
     
     try:
         response = requests.get(SEARCH_URL, headers=headers, params=querystring)
-        
         if response.status_code != 200:
-            st.error(f"Erro na API: {response.status_code} - Verifica a tua API Key do RapidAPI.")
+            st.error("Erro na API. Verifica a tua chave.")
             return []
             
-        dados = response.json()
-        
-        # A API devolve os resultados dentro de uma lista chamada 'data'
-        resultados_api = dados.get("data", [])
+        resultados_api = response.json().get("data", [])
         resultados_finais = []
         
         for i, lugar in enumerate(resultados_api):
             if len(resultados_finais) >= max_results:
                 break
             
-            # Extrair os dados (usando .get para evitar erros se o dado não existir)
+            nome_empresa = lugar.get("name", "N/A")
+            telefone = lugar.get("phone_number", "")
+            site = lugar.get("website", "")
+            
+            # Executa as novas funções de valor agregado
+            link_wa = gerar_link_whatsapp(telefone)
+            email_extraido = extrair_email_do_site(site)
+            mensagem_fria = f"Olá, equipa da {nome_empresa}. Vi que são uma referência como {nicho} em {regiao}. Gostaria de apresentar uma proposta rápida."
+            
             resultados_finais.append({
-                "Nome": lugar.get("name", "N/A"),
-                "Telefone": lugar.get("phone_number", ""),
-                "Endereço": lugar.get("full_address", ""),
-                "Site": lugar.get("website", ""),
+                "Nome": nome_empresa,
+                "Telefone": telefone,
+                "WhatsApp Link": link_wa,
+                "E-mail (Extraído)": email_extraido,
+                "Site": site,
                 "Avaliação": lugar.get("rating", ""),
-                "Nº Avaliações": lugar.get("review_count", "")
+                "Nº Avaliações": lugar.get("review_count", 0),
+                "Mensagem de Prospecção": mensagem_fria
             })
             
             if progress_callback:
-                progress_callback(len(resultados_finais), max_results, "buscando e coletando telefones")
+                progress_callback(len(resultados_finais), max_results, "Extraindo dados e e-mails")
                 
         return resultados_finais
-        
     except Exception as e:
-        st.error(f"Ocorreu um erro técnico: {e}")
+        st.error(f"Erro técnico: {e}")
         return []
 
 # ---------- INTERFACE ----------
 
-st.title("🔍 Scraper de Leads (RapidAPI)")
-st.caption("Extraia contatos e telefones de negócios (via RapidAPI).")
+st.title("🚀 Gerador de Oportunidades B2B")
+st.markdown("Extraia contatos, **e-mails**, links de WhatsApp e crie mensagens de prospecção automaticamente.")
 
 with st.sidebar:
     st.subheader("Configuração")
-    api_key = st.text_input("RapidAPI Key", type="password", help="Cola aqui a tua chave (começa com c3d8...)")
-    st.caption("A chave não é salva — só usada durante essa sessão.")
+    api_key = st.text_input("RapidAPI Key", type="password")
+    st.divider()
+    st.caption("Filtros Avançados pós-busca:")
+    mostrar_sem_site = st.checkbox("🔍 Mostrar apenas empresas SEM site")
+    mostrar_mal_avaliados = st.checkbox("⭐ Mostrar empresas com avaliação menor que 4.0")
 
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns([2, 2, 1])
 with col1:
     nicho = st.text_input("Nicho", placeholder="Ex: advogados")
 with col2:
     regiao = st.text_input("Cidade/Região", placeholder="Ex: Maputo")
+with col3:
+    max_leads = st.number_input("Leads", min_value=5, max_value=50, value=10)
 
-max_leads = st.slider("Quantidade de leads", min_value=5, max_value=50, value=20, step=5)
-
-if st.button("Buscar leads", type="primary", use_container_width=True):
-    if not api_key:
-        st.warning("Cola a tua API Key na barra lateral primeiro.")
-    elif not nicho or not regiao:
-        st.warning("Preenche o nicho e a região primeiro.")
+if st.button("Iniciar Varredura Completa", type="primary", use_container_width=True):
+    if not api_key or not nicho or not regiao:
+        st.warning("Preenche a chave da API, nicho e região.")
     else:
         query = f"{nicho} em {regiao}"
-        progress_bar = st.progress(0, text="Iniciando busca...")
+        progress_bar = st.progress(0, text="Iniciando motores...")
 
         def update_progress(current, total, fase):
             progress_bar.progress(min(current / total, 1.0), text=f"{fase}: {current}/{total}")
 
-        with st.spinner("Buscando empresas e telefones..."):
-            resultados = buscar_lugares_rapidapi(query, api_key, max_leads, update_progress)
+        with st.spinner("Buscando empresas e rastreando sites... (Isto pode demorar alguns segundos por causa da busca de e-mails)"):
+            resultados = buscar_lugares_rapidapi(query, api_key, max_leads, nicho, regiao, update_progress)
 
         if resultados:
             df = pd.DataFrame(resultados)
-            st.success(f"{len(df)} leads encontrados!")
+            
+            # Aplicação dos Filtros Inteligentes de Negócio
+            if mostrar_sem_site:
+                df = df[df["Site"] == ""]
+            if mostrar_mal_avaliados:
+                # Converte para float lidando com valores vazios
+                df["Avaliação"] = pd.to_numeric(df["Avaliação"], errors='coerce')
+                df = df[df["Avaliação"] < 4.0]
+
+            st.success(f"{len(df)} oportunidades validadas e prontas para prospecção!")
             st.dataframe(df, use_container_width=True)
 
             csv = df.to_csv(index=False).encode("utf-8")
             st.download_button(
-                "⬇️ Baixar CSV (Excel)",
+                "⬇️ Baixar Base de Dados (CSV)",
                 data=csv,
-                file_name=f"leads_{nicho.replace(' ', '_')}_{regiao.replace(' ', '_')}.csv",
+                file_name=f"oportunidades_{nicho}_{regiao}.csv",
                 mime="text/csv",
                 use_container_width=True,
             )
         else:
-            st.error("Nenhum resultado encontrado ou o limite gratuito da API acabou.")
+            st.error("Nenhum resultado encontrado. Verifica o teu limite na API.")
         
