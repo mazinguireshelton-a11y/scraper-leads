@@ -17,25 +17,17 @@ def extrair_email_do_site(url):
     if not url or url == "N/A":
         return ""
     try:
-        # Finge ser um navegador real para não ser bloqueado
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        # Timeout curto (3 segundos) para o app não ficar travado se o site estiver fora do ar
         resposta = requests.get(url, headers=headers, timeout=3)
-        
-        # Expressão regular para encontrar qualquer coisa com formato de e-mail
         emails_encontrados = set(re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", resposta.text))
-        
-        # Filtra falsos positivos comuns (como extensões de imagens)
         emails_validos = [e for e in emails_encontrados if not e.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))]
-        
-        return ", ".join(emails_validos[:2]) # Devolve no máximo 2 e-mails
+        return ", ".join(emails_validos[:2])
     except:
         return ""
 
 def gerar_link_whatsapp(telefone):
     if not telefone:
         return ""
-    # Remove todos os espaços e traços, deixando só os números
     numero_limpo = re.sub(r'\D', '', telefone)
     if numero_limpo:
         return f"https://wa.me/{numero_limpo}"
@@ -65,7 +57,9 @@ def buscar_lugares_rapidapi(query: str, api_key: str, max_results: int, nicho: s
             telefone = lugar.get("phone_number", "")
             site = lugar.get("website", "")
             
-            # Executa as novas funções de valor agregado
+            # Identifica se tem site ou se é uma oportunidade sem site
+            status_site = "Tem Site" if site else "⚠️ Precisa de Site (Oportunidade)"
+            
             link_wa = gerar_link_whatsapp(telefone)
             email_extraido = extrair_email_do_site(site)
             mensagem_fria = f"Olá, equipa da {nome_empresa}. Vi que são uma referência como {nicho} em {regiao}. Gostaria de apresentar uma proposta rápida."
@@ -75,6 +69,7 @@ def buscar_lugares_rapidapi(query: str, api_key: str, max_results: int, nicho: s
                 "Telefone": telefone,
                 "WhatsApp Link": link_wa,
                 "E-mail (Extraído)": email_extraido,
+                "Status do Site": status_site,
                 "Site": site,
                 "Avaliação": lugar.get("rating", ""),
                 "Nº Avaliações": lugar.get("review_count", 0),
@@ -92,15 +87,13 @@ def buscar_lugares_rapidapi(query: str, api_key: str, max_results: int, nicho: s
 # ---------- INTERFACE ----------
 
 st.title("🚀 Gerador de Oportunidades B2B")
-st.markdown("Extraia contatos, **e-mails**, links de WhatsApp e crie mensagens de prospecção automaticamente.")
+st.markdown("Extraia contatos, **e-mails**, links de WhatsApp e identifique quem precisa de serviços digitais.")
 
 with st.sidebar:
     st.subheader("Configuração")
     api_key = st.text_input("RapidAPI Key", type="password")
     st.divider()
-    st.caption("Filtros Avançados pós-busca:")
-    mostrar_sem_site = st.checkbox("🔍 Mostrar apenas empresas SEM site")
-    mostrar_mal_avaliados = st.checkbox("⭐ Mostrar empresas com avaliação menor que 4.0")
+    st.caption("Dica: Podes ordenar ou pesquisar diretamente na tabela de resultados gerada.")
 
 col1, col2, col3 = st.columns([2, 2, 1])
 with col1:
@@ -120,21 +113,13 @@ if st.button("Iniciar Varredura Completa", type="primary", use_container_width=T
         def update_progress(current, total, fase):
             progress_bar.progress(min(current / total, 1.0), text=f"{fase}: {current}/{total}")
 
-        with st.spinner("Buscando empresas e rastreando sites... (Isto pode demorar alguns segundos por causa da busca de e-mails)"):
+        with st.spinner("Buscando empresas e rastreando sites..."):
             resultados = buscar_lugares_rapidapi(query, api_key, max_leads, nicho, regiao, update_progress)
 
         if resultados:
             df = pd.DataFrame(resultados)
-            
-            # Aplicação dos Filtros Inteligentes de Negócio
-            if mostrar_sem_site:
-                df = df[df["Site"] == ""]
-            if mostrar_mal_avaliados:
-                # Converte para float lidando com valores vazios
-                df["Avaliação"] = pd.to_numeric(df["Avaliação"], errors='coerce')
-                df = df[df["Avaliação"] < 4.0]
 
-            st.success(f"{len(df)} oportunidades validadas e prontas para prospecção!")
+            st.success(f"{len(df)} oportunidades carregadas com sucesso!")
             st.dataframe(df, use_container_width=True)
 
             csv = df.to_csv(index=False).encode("utf-8")
@@ -146,5 +131,5 @@ if st.button("Iniciar Varredura Completa", type="primary", use_container_width=T
                 use_container_width=True,
             )
         else:
-            st.error("Nenhum resultado encontrado. Verifica o teu limite na API.")
+            st.error("Nenhum resultado encontrado. Tenta uma cidade específica.")
         
