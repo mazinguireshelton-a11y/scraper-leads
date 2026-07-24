@@ -39,6 +39,80 @@ SEARCH_URL = "https://local-business-data.p.rapidapi.com/search"
 # URL CORRETO DO OPENROUTER
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
+# --- CONTROLE DE ACESSO POR CLIENTE ---
+# Configura os clientes em .streamlit/secrets.toml (local) ou em
+# "Settings > Secrets" no Streamlit Cloud, neste formato:
+#
+# [clientes]
+# chave123 = { nome = "Cliente A", limite_diario = 20 }
+# chave456 = { nome = "Cliente B", limite_diario = 50 }
+#
+import json
+from datetime import date
+
+ARQUIVO_USO = "uso_diario.json"
+
+def carregar_clientes():
+    try:
+        return dict(st.secrets.get("clientes", {}))
+    except Exception:
+        return {}
+
+def carregar_uso():
+    if os.path.exists(ARQUIVO_USO):
+        try:
+            with open(ARQUIVO_USO, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def salvar_uso(dados):
+    try:
+        with open(ARQUIVO_USO, "w") as f:
+            json.dump(dados, f)
+    except Exception:
+        pass  # não trava o app se não conseguir gravar (ex: filesystem read-only)
+
+def verificar_e_registrar_uso(chave):
+    """Retorna (permitido: bool, mensagem: str)."""
+    uso = carregar_uso()
+    hoje = str(date.today())
+    registro = uso.get(chave, {"data": hoje, "contagem": 0})
+
+    if registro["data"] != hoje:
+        registro = {"data": hoje, "contagem": 0}
+
+    clientes = carregar_clientes()
+    limite = clientes.get(chave, {}).get("limite_diario", 10)
+
+    if registro["contagem"] >= limite:
+        return False, f"Limite diário de {limite} buscas atingido. Volta amanhã ou fala com o suporte."
+
+    registro["contagem"] += 1
+    uso[chave] = registro
+    salvar_uso(uso)
+    restantes = limite - registro["contagem"]
+    return True, f"{restantes} buscas restantes hoje."
+
+def tela_login():
+    st.title("🔐 Acesso Restrito")
+    st.caption("Este é um serviço pago. Insere a tua chave de acesso.")
+    chave_input = st.text_input("Chave de acesso", type="password")
+    if st.button("Entrar", type="primary"):
+        clientes = carregar_clientes()
+        if chave_input in clientes:
+            st.session_state["autenticado"] = True
+            st.session_state["chave_cliente"] = chave_input
+            st.session_state["nome_cliente"] = clientes[chave_input].get("nome", "Cliente")
+            st.rerun()
+        else:
+            st.error("Chave inválida. Confirma com quem te vendeu o acesso.")
+    st.stop()
+
+if "autenticado" not in st.session_state:
+    tela_login()
+
 # --- CONFIGURAÇÃO DA PÁGINA E ESTILO VISUAL (CSS) ---
 st.set_page_config(page_title="Prospeção B2B com IA", page_icon="🚀", layout="wide")
 
@@ -250,7 +324,15 @@ def criar_pdf(dados, nicho, regiao):
     return buffer
 
 # ---------- INTERFACE PRINCIPAL ----------
-st.title("🚀 Plataforma de Prospeção Inteligente")
+col_titulo, col_user = st.columns([4, 1])
+with col_titulo:
+    st.title("🚀 Plataforma de Prospeção Inteligente")
+with col_user:
+    st.caption(f"👤 {st.session_state.get('nome_cliente', '')}")
+    if st.button("Sair"):
+        st.session_state.clear()
+        st.rerun()
+
 st.markdown("Encontra oportunidades de negócio e utiliza IA para gerar propostas comerciais adaptadas ao teu objetivo.")
 
 if not RAPIDAPI_KEY or not OPENROUTER_API_KEY:
@@ -281,13 +363,18 @@ if st.button("🔍 Iniciar Varredura do Mercado", type="primary", use_container_
     if not RAPIDAPI_KEY or not nicho or not regiao:
         st.error("Preenche os campos e as chaves API.")
     else:
-        bar = st.progress(0, "A preparar...")
-        with st.spinner("A rastrear empresas..."):
-            resultados = buscar_lugares(f"{nicho} em {regiao}", RAPIDAPI_KEY, max_leads, nicho, regiao, 
-                                      lambda c, t, msg: bar.progress(min(c/t, 1.0), msg))
-            if resultados:
-                st.session_state.update({'leads': resultados, 'n': nicho, 'r': regiao, 'obj': objetivo})
-        bar.empty()
+        permitido, msg_uso = verificar_e_registrar_uso(st.session_state["chave_cliente"])
+        if not permitido:
+            st.error(msg_uso)
+        else:
+            st.info(f"✅ {msg_uso}")
+            bar = st.progress(0, "A preparar...")
+            with st.spinner("A rastrear empresas..."):
+                resultados = buscar_lugares(f"{nicho} em {regiao}", RAPIDAPI_KEY, max_leads, nicho, regiao,
+                                          lambda c, t, msg: bar.progress(min(c/t, 1.0), msg))
+                if resultados:
+                    st.session_state.update({'leads': resultados, 'n': nicho, 'r': regiao, 'obj': objetivo})
+            bar.empty()
 
 if 'leads' in st.session_state:
     df = pd.DataFrame(st.session_state['leads'])
@@ -356,4 +443,4 @@ if 'leads' in st.session_state:
                        file_name="leads.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
     b3.download_button("📕 Relatório PDF", data=criar_pdf(st.session_state['leads'], st.session_state['n'], st.session_state['r']), 
                        file_name="leads.pdf", mime="application/pdf", use_container_width=True)
-    
+                    
