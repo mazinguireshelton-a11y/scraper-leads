@@ -83,17 +83,26 @@ def calcular_score_oportunidade(site, avaliacao, num_avaliacoes, telefone):
     return score
 
 # --- INTEGRAÇÃO COM A IA DO OPENROUTER ---
+# Modelos em ordem de tentativa. O auto-router 'openrouter/free' escolhe
+# sozinho um modelo grátis disponível — evita quebrar quando um ID específico
+# é descontinuado (o catálogo de modelos grátis muda com frequência).
+MODELOS_FALLBACK = [
+    "openrouter/free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "google/gemma-3-27b-it:free",
+]
+
 def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key):
     if not api_key:
         return "Erro: Chave API OpenRouter em falta."
-    
+
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
         "HTTP-Referer": "https://streamlit.io",
         "X-Title": "Motor B2B Universal"
     }
-    
+
     prompt = f"""
     O meu objetivo é: '{objetivo}'.
     Analisa esta empresa: Nome: {nome} (Nicho: {nicho}). Website: {'Sim' if site else 'Não'}. Avaliação: {avaliacao}.
@@ -101,24 +110,29 @@ def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key):
     1. DIAGNÓSTICO: (1 frase avaliando a empresa)
     2. MENSAGEM: (1 mensagem de WhatsApp curta e persuasiva para abordagem)
     """
-    
-    payload = {
-        "model": "google/gemma-2-9b-it:free",  # Modelo gratuito fiável no OpenRouter
-        "messages": [
-            {"role": "system", "content": "És um estratega de negócios B2B. Responde sempre em Português."},
-            {"role": "user", "content": prompt}
-        ]
-    }
-    
-    try:
-        response = requests.post(OPENROUTER_API_URL, headers=headers, json=payload)
-        if response.status_code == 200:
-            dados = response.json()
-            return dados['choices'][0]['message']['content'].strip()
-        else:
-            return f"Erro IA ({response.status_code}): {response.text}"
-    except Exception as e:
-        return f"Erro ligação IA: {e}"
+
+    erro_final = ""
+    for modelo in MODELOS_FALLBACK:
+        payload = {
+            "model": modelo,
+            "messages": [
+                {"role": "system", "content": "És um estratega de negócios B2B. Responde sempre em Português."},
+                {"role": "user", "content": prompt}
+            ]
+        }
+        try:
+            response = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
+            if response.status_code == 200:
+                dados = response.json()
+                return dados['choices'][0]['message']['content'].strip()
+            else:
+                erro_final = f"Erro IA ({response.status_code}): {response.text[:150]}"
+                continue  # tenta o próximo modelo da lista
+        except Exception as e:
+            erro_final = f"Erro ligação IA: {e}"
+            continue
+
+    return erro_final or "Erro: nenhum modelo grátis disponível no momento."
 
 # --- MOTOR DE BUSCA RAPIDAPI ---
 def buscar_lugares(query, api_key, limit, nicho, regiao, progress=None):
