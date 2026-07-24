@@ -1,5 +1,5 @@
 """
-MOTOR DE BUSCA B2B UNIVERSAL COM IA GRATUITA (OpenRouter)
+MOTOR DE BUSCA B2B UNIVERSAL COM IA (OpenRouter)
 -----------------------------------------------------
 """
 
@@ -32,6 +32,7 @@ except Exception:
     OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 
 SEARCH_URL = "https://local-business-data.p.rapidapi.com/search"
+# URL CORRETO DO OPENROUTER
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # --- CONFIGURAÇÃO DA PÁGINA E ESTILO VISUAL (CSS) ---
@@ -45,7 +46,6 @@ st.markdown("""
         background-color: #2563eb; color: white; border-radius: 8px; font-weight: bold; transition: 0.3s;
     }
     .stButton>button:hover {background-color: #1d4ed8; border-color: #1d4ed8;}
-    .css-1d391kg {background-color: #ffffff; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);}
     </style>
 """, unsafe_allow_html=True)
 
@@ -82,7 +82,7 @@ def calcular_score_oportunidade(site, avaliacao, num_avaliacoes, telefone):
     if not telefone: score -= 10
     return score
 
-# --- INTEGRAÇÃO COM A IA DO OPENROUTER (GRATUITA) ---
+# --- INTEGRAÇÃO COM A IA DO OPENROUTER ---
 def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key):
     if not api_key:
         return "Erro: Chave API OpenRouter em falta."
@@ -90,8 +90,8 @@ def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key):
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://teusite.com", # Opcional, recomendado pelo OpenRouter
-        "X-Title": "Motor B2B"
+        "HTTP-Referer": "https://streamlit.io",
+        "X-Title": "Motor B2B Universal"
     }
     
     prompt = f"""
@@ -99,11 +99,11 @@ def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key):
     Analisa esta empresa: Nome: {nome} (Nicho: {nicho}). Website: {'Sim' if site else 'Não'}. Avaliação: {avaliacao}.
     Retorna APENAS:
     1. DIAGNÓSTICO: (1 frase avaliando a empresa)
-    2. MENSAGEM: (1 mensagem de WhatsApp curta e persuasiva)
+    2. MENSAGEM: (1 mensagem de WhatsApp curta e persuasiva para abordagem)
     """
     
     payload = {
-        "model": "meta-llama/llama-3-8b-instruct:free",
+        "model": "google/gemma-2-9b-it:free",  # Modelo gratuito fiável no OpenRouter
         "messages": [
             {"role": "system", "content": "És um estratega de negócios B2B. Responde sempre em Português."},
             {"role": "user", "content": prompt}
@@ -113,8 +113,10 @@ def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key):
     try:
         response = requests.post(OPENROUTER_API_URL, headers=headers, json=payload)
         if response.status_code == 200:
-            return response.json()['choices'][0]['message']['content'].strip()
-        return f"Erro IA ({response.status_code}): {response.text}"
+            dados = response.json()
+            return dados['choices'][0]['message']['content'].strip()
+        else:
+            return f"Erro IA ({response.status_code}): {response.text}"
     except Exception as e:
         return f"Erro ligação IA: {e}"
 
@@ -162,7 +164,7 @@ def criar_word(dados, nicho, regiao):
     for item in dados:
         doc.add_heading(item["Nome"], level=2)
         doc.add_paragraph(f"• Contato: {item['Telefone']} | Email: {item['E-mail']}")
-        doc.add_paragraph(f"• Score: {item['Score']}")
+        doc.add_paragraph(f"• Score Comercial: {item['Score']}")
         doc.add_paragraph(f"• Análise IA:\n{item.get('Análise IA', 'Não analisado.')}")
         doc.add_paragraph("-" * 30)
     buffer = BytesIO()
@@ -194,7 +196,7 @@ def criar_pdf(dados, nicho, regiao):
 
 # ---------- INTERFACE PRINCIPAL ----------
 st.title("🚀 Plataforma de Prospeção Inteligente")
-st.markdown("Encontra as melhores oportunidades de negócio e utiliza IA para gerar propostas comerciais instantâneas.")
+st.markdown("Encontra oportunidades de negócio e utiliza IA para gerar propostas comerciais adaptadas ao teu objetivo.")
 
 if not RAPIDAPI_KEY or not OPENROUTER_API_KEY:
     with st.sidebar:
@@ -205,13 +207,12 @@ if not RAPIDAPI_KEY or not OPENROUTER_API_KEY:
 
 st.divider()
 
-with st.container():
-    c1, c2, c3 = st.columns([2, 2, 1])
-    nicho = c1.text_input("🏢 Nicho / Setor", placeholder="Ex: Clínicas, Restaurantes")
-    regiao = c2.text_input("📍 Região", placeholder="Ex: Maputo, Lisboa")
-    max_leads = c3.number_input("📊 Qtd.", min_value=5, max_value=50, value=10)
+col1, col2, col3 = st.columns([2, 2, 1])
+nicho = col1.text_input("🏢 Nicho / Setor", placeholder="Ex: Clínicas, Restaurantes")
+regiao = col2.text_input("📍 Região", placeholder="Ex: Maputo, Lisboa")
+max_leads = col3.number_input("📊 Qtd.", min_value=5, max_value=50, value=10)
 
-objetivo = st.text_input("🎯 Objetivo Comercial", placeholder="Ex: Quero vender gestão de tráfego pago")
+objetivo = st.text_input("🎯 Objetivo Comercial", placeholder="Ex: Quero vender serviços de marketing digital")
 
 if st.button("🔍 Iniciar Varredura do Mercado", type="primary", use_container_width=True):
     if not RAPIDAPI_KEY or not nicho or not regiao:
@@ -230,7 +231,7 @@ if 'leads' in st.session_state:
     st.success(f"✅ {len(df)} oportunidades validadas e ordenadas por potencial (Score).")
     st.dataframe(df, use_container_width=True)
     
-    st.markdown("### 🧠 Modo Premium: Abordagem IA (Llama 3 Grátis)")
+    st.markdown("### 🧠 Modo Premium: Abordagem IA (Gratuita)")
     qtd = st.slider("Analisar quantas empresas?", 1, len(df), min(3, len(df)))
     
     if st.button("✨ Gerar Estratégias com IA", type="primary"):
@@ -246,7 +247,6 @@ if 'leads' in st.session_state:
     st.subheader("📥 Exportar Relatórios")
     df_final = pd.DataFrame(st.session_state['leads'])
     
-    # Botões de Exportação
     b1, b2, b3 = st.columns(3)
     b1.download_button("📊 Excel (CSV)", data=df_final.to_csv(index=False).encode("utf-8"), 
                        file_name="leads.csv", mime="text/csv", use_container_width=True)
