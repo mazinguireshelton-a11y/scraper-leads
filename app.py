@@ -27,9 +27,13 @@ from reportlab.lib.styles import getSampleStyleSheet
 try:
     RAPIDAPI_KEY = st.secrets.get("RAPIDAPI_KEY", os.getenv("RAPIDAPI_KEY", ""))
     OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", os.getenv("OPENROUTER_API_KEY", ""))
+    GMAIL_ENDERECO = st.secrets.get("GMAIL_ENDERECO", os.getenv("GMAIL_ENDERECO", ""))
+    GMAIL_APP_PASSWORD = st.secrets.get("GMAIL_APP_PASSWORD", os.getenv("GMAIL_APP_PASSWORD", ""))
 except Exception:
     RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "")
     OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+    GMAIL_ENDERECO = os.getenv("GMAIL_ENDERECO", "")
+    GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")
 
 SEARCH_URL = "https://local-business-data.p.rapidapi.com/search"
 # URL CORRETO DO OPENROUTER
@@ -67,10 +71,46 @@ def extrair_email_do_site(url):
     except:
         return ""
 
-def gerar_link_whatsapp(telefone):
+def gerar_link_whatsapp(telefone, mensagem=""):
     if not telefone: return ""
     num = re.sub(r'\D', '', str(telefone))
-    return f"https://wa.me/{num}" if num else ""
+    if not num: return ""
+    if mensagem:
+        from urllib.parse import quote
+        return f"https://wa.me/{num}?text={quote(mensagem)}"
+    return f"https://wa.me/{num}"
+
+def extrair_mensagem_da_analise(analise_ia):
+    """Puxa só a parte 'MENSAGEM' da resposta da IA, sem o rótulo nem o rodapé do modelo."""
+    if not analise_ia:
+        return ""
+    match = re.search(r"MENSAGEM:?\s*(.+?)(?:\n\n_\(modelo|\Z)", analise_ia, re.DOTALL | re.IGNORECASE)
+    return match.group(1).strip() if match else analise_ia.split("_(modelo")[0].strip()
+
+def enviar_email_gmail(remetente, senha_app, destinatario, assunto, corpo):
+    """Envia e-mail via Gmail SMTP usando uma Senha de App (não a senha normal da conta)."""
+    import smtplib
+    from email.mime.text import MIMEText
+
+    if not remetente or not senha_app:
+        return False, "Configura o Gmail (endereço + Senha de App) na barra lateral primeiro."
+    if not destinatario:
+        return False, "Este lead não tem e-mail encontrado."
+
+    msg = MIMEText(corpo)
+    msg["Subject"] = assunto
+    msg["From"] = remetente
+    msg["To"] = destinatario
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as servidor:
+            servidor.login(remetente, senha_app)
+            servidor.sendmail(remetente, [destinatario], msg.as_string())
+        return True, "E-mail enviado!"
+    except smtplib.SMTPAuthenticationError:
+        return False, "Falha na autenticação — confirma que é uma Senha de App (16 caracteres), não a senha normal."
+    except Exception as e:
+        return False, f"Erro ao enviar: {e}"
 
 def calcular_score_oportunidade(site, avaliacao, num_avaliacoes, telefone):
     score = 0
@@ -124,7 +164,9 @@ def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key):
             response = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
             if response.status_code == 200:
                 dados = response.json()
-                return dados['choices'][0]['message']['content'].strip()
+                texto = dados['choices'][0]['message']['content'].strip()
+                modelo_real = dados.get('model', modelo)  # o OpenRouter informa qual modelo respondeu de fato
+                return f"{texto}\n\n_(modelo: {modelo_real})_"
             else:
                 erro_final = f"Erro IA ({response.status_code}): {response.text[:150]}"
                 continue  # tenta o próximo modelo da lista
@@ -160,7 +202,6 @@ def buscar_lugares(query, api_key, limit, nicho, regiao, progress=None):
                 "Score": score,
                 "Nome": nome,
                 "Telefone": tel,
-                "WhatsApp": gerar_link_whatsapp(tel),
                 "E-mail": extrair_email_do_site(site),
                 "Site": site,
                 "Avaliação": str(aval)
@@ -219,6 +260,14 @@ if not RAPIDAPI_KEY or not OPENROUTER_API_KEY:
         OPENROUTER_API_KEY = st.text_input("OpenRouter API Key", value=OPENROUTER_API_KEY, type="password")
         st.markdown("[Criar conta OpenRouter Grátis](https://openrouter.ai/)")
 
+with st.sidebar:
+    st.divider()
+    st.subheader("📧 Envio por Gmail")
+    GMAIL_ENDERECO = st.text_input("Teu Gmail", value=GMAIL_ENDERECO, placeholder="tuemail@gmail.com")
+    GMAIL_APP_PASSWORD = st.text_input("Senha de App do Gmail", value=GMAIL_APP_PASSWORD, type="password",
+                                        help="Não é a senha normal! Gera em: myaccount.google.com → Segurança → Senhas de app (precisa de verificação em 2 etapas ativada)")
+    st.caption("As credenciais não são salvas — só usadas durante essa sessão.")
+
 st.divider()
 
 col1, col2, col3 = st.columns([2, 2, 1])
@@ -256,7 +305,46 @@ if 'leads' in st.session_state:
                                      empresa["Avaliação"], st.session_state['obj'], OPENROUTER_API_KEY)
                 st.session_state['leads'][i]["Análise IA"] = resp
             st.rerun()
-            
+
+    # --- AÇÕES POR EMPRESA: enviar e-mail direto ou abrir WhatsApp com a mensagem da IA pronta ---
+    leads_com_analise = [l for l in st.session_state['leads'] if l.get("Análise IA")]
+    if leads_com_analise:
+        st.divider()
+        st.subheader("📤 Enviar Propostas")
+        st.caption("E-mail é enviado direto pelo app. WhatsApp abre com a mensagem já preenchida — só falta tocar em Enviar (isso evita bloqueio da tua conta por envio automático em massa).")
+
+        for idx, empresa in enumerate(st.session_state['leads']):
+            if not empresa.get("Análise IA"):
+                continue
+            mensagem = extrair_mensagem_da_analise(empresa["Análise IA"])
+            with st.expander(f"{empresa['Nome']} (Score: {empresa['Score']})"):
+                st.markdown(empresa["Análise IA"])
+                st.text_area("Mensagem que será usada", value=mensagem, key=f"msg_{idx}", height=80)
+
+                colA, colB = st.columns(2)
+
+                # E-mail
+                email_destino = empresa.get("E-mail", "")
+                with colA:
+                    if email_destino:
+                        if st.button(f"📧 Enviar E-mail", key=f"email_{idx}", use_container_width=True):
+                            ok, texto_status = enviar_email_gmail(
+                                GMAIL_ENDERECO, GMAIL_APP_PASSWORD, email_destino,
+                                assunto=f"Proposta para {empresa['Nome']}",
+                                corpo=st.session_state.get(f"msg_{idx}", mensagem)
+                            )
+                            st.success(texto_status) if ok else st.error(texto_status)
+                    else:
+                        st.caption("Sem e-mail encontrado")
+
+                # WhatsApp
+                with colB:
+                    link_wa = gerar_link_whatsapp(empresa.get("Telefone", ""), st.session_state.get(f"msg_{idx}", mensagem))
+                    if link_wa:
+                        st.link_button("💬 Abrir WhatsApp", link_wa, use_container_width=True)
+                    else:
+                        st.caption("Sem telefone válido")
+
     st.divider()
     st.subheader("📥 Exportar Relatórios")
     df_final = pd.DataFrame(st.session_state['leads'])
@@ -268,3 +356,4 @@ if 'leads' in st.session_state:
                        file_name="leads.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
     b3.download_button("📕 Relatório PDF", data=criar_pdf(st.session_state['leads'], st.session_state['n'], st.session_state['r']), 
                        file_name="leads.pdf", mime="application/pdf", use_container_width=True)
+    
