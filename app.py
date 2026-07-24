@@ -1,5 +1,5 @@
 """
-MOTOR DE BUSCA B2B UNIVERSAL COM INTELIGÊNCIA ARTIFICIAL (Grok)
+MOTOR DE BUSCA B2B UNIVERSAL COM IA GRATUITA (OpenRouter)
 -----------------------------------------------------
 """
 
@@ -11,7 +11,7 @@ import os
 from io import BytesIO
 from bs4 import BeautifulSoup
 
-# Tenta carregar o dotenv para testes locais no Termux (se falhar, ignora)
+# Tenta carregar o dotenv para testes locais
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -20,28 +20,39 @@ except ImportError:
 
 from docx import Document
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
 
-# --- CONFIGURAÇÃO DE CHAVES DE API (SEGURANÇA) ---
-# O código tenta ler do Streamlit Secrets primeiro. Se não encontrar, tenta do .env local.
+# --- CONFIGURAÇÃO DE CHAVES DE API ---
 try:
     RAPIDAPI_KEY = st.secrets.get("RAPIDAPI_KEY", os.getenv("RAPIDAPI_KEY", ""))
-    GROK_API_KEY = st.secrets.get("GROK_API_KEY", os.getenv("GROK_API_KEY", ""))
+    OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", os.getenv("OPENROUTER_API_KEY", ""))
 except Exception:
     RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "")
-    GROK_API_KEY = os.getenv("GROK_API_KEY", "")
+    OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 
 SEARCH_URL = "https://local-business-data.p.rapidapi.com/search"
-GROK_API_URL = "https://api.x.ai/v1/chat/completions"
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-st.set_page_config(page_title="Motor B2B Universal", page_icon="🌍", layout="wide")
+# --- CONFIGURAÇÃO DA PÁGINA E ESTILO VISUAL (CSS) ---
+st.set_page_config(page_title="Prospeção B2B com IA", page_icon="🚀", layout="wide")
+
+st.markdown("""
+    <style>
+    .main {background-color: #f8f9fa;}
+    h1 {color: #1e3a8a; font-family: 'Helvetica Neue', sans-serif;}
+    .stButton>button {
+        background-color: #2563eb; color: white; border-radius: 8px; font-weight: bold; transition: 0.3s;
+    }
+    .stButton>button:hover {background-color: #1d4ed8; border-color: #1d4ed8;}
+    .css-1d391kg {background-color: #ffffff; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);}
+    </style>
+""", unsafe_allow_html=True)
 
 # --- FUNÇÕES DE LIMPEZA E EXTRAÇÃO ---
 def limpar_para_pdf(texto):
     if not texto:
-        return ""
+        return "N/A"
     return str(texto).replace("&", "e").replace("<", "").replace(">", "")
 
 def extrair_email_do_site(url):
@@ -50,24 +61,19 @@ def extrair_email_do_site(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         resposta = requests.get(url, headers=headers, timeout=3)
-        emails_encontrados = set(re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", resposta.text))
-        emails_validos = [e for e in emails_encontrados if not e.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))]
-        return ", ".join(emails_validos[:2])
+        emails = set(re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", resposta.text))
+        validos = [e for e in emails if not e.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))]
+        return ", ".join(validos[:2])
     except:
         return ""
 
 def gerar_link_whatsapp(telefone):
-    if not telefone:
-        return ""
-    numero_limpo = re.sub(r'\D', '', telefone)
-    if numero_limpo:
-        return f"https://wa.me/{numero_limpo}"
-    return ""
+    if not telefone: return ""
+    num = re.sub(r'\D', '', str(telefone))
+    return f"https://wa.me/{num}" if num else ""
 
 def calcular_score_oportunidade(site, avaliacao, num_avaliacoes, telefone):
-    """Calcula um score básico e rápido para priorizar os melhores contatos"""
     score = 0
-    # Regras universais de pontuação
     if not site: score += 30
     try:
         nota = float(avaliacao) if avaliacao else 0.0
@@ -76,192 +82,175 @@ def calcular_score_oportunidade(site, avaliacao, num_avaliacoes, telefone):
     if not telefone: score -= 10
     return score
 
-# --- INTEGRAÇÃO COM A IA DO GROK ---
-def analisar_com_grok(nome, nicho, site, avaliacao, objetivo, api_key):
-    """Usa o Grok para gerar um diagnóstico e mensagem baseada no objetivo do utilizador"""
+# --- INTEGRAÇÃO COM A IA DO OPENROUTER (GRATUITA) ---
+def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key):
     if not api_key:
-        return "Erro: Chave da API do Grok não configurada."
+        return "Erro: Chave API OpenRouter em falta."
     
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://teusite.com", # Opcional, recomendado pelo OpenRouter
+        "X-Title": "Motor B2B"
     }
     
-    prompt_sistema = "És um estrategista de negócios especialista em prospecção B2B direto e persuasivo."
-    prompt_utilizador = f"""
-    O meu objetivo profissional é: '{objetivo}'.
-    Analisa esta empresa de forma breve para me ajudar a abordá-los:
-    - Nome: {nome} (Nicho: {nicho})
-    - Tem Website: {'Sim' if site else 'Não'}
-    - Avaliação no Google: {avaliacao}
-    
-    Fornece apenas duas coisas:
-    1. DIAGNÓSTICO: (1 frase avaliando a empresa face ao meu objetivo)
-    2. MENSAGEM: (1 mensagem de WhatsApp curta e profissional, pronta a enviar, oferecendo o meu serviço/proposta)
+    prompt = f"""
+    O meu objetivo é: '{objetivo}'.
+    Analisa esta empresa: Nome: {nome} (Nicho: {nicho}). Website: {'Sim' if site else 'Não'}. Avaliação: {avaliacao}.
+    Retorna APENAS:
+    1. DIAGNÓSTICO: (1 frase avaliando a empresa)
+    2. MENSAGEM: (1 mensagem de WhatsApp curta e persuasiva)
     """
     
     payload = {
-        "model": "grok-4.5",
+        "model": "meta-llama/llama-3-8b-instruct:free",
         "messages": [
-            {"role": "system", "content": prompt_sistema},
-            {"role": "user", "content": prompt_utilizador}
-        ],
-        "temperature": 0.7
+            {"role": "system", "content": "És um estratega de negócios B2B. Responde sempre em Português."},
+            {"role": "user", "content": prompt}
+        ]
     }
     
     try:
-        response = requests.post(GROK_API_URL, headers=headers, json=payload)
+        response = requests.post(OPENROUTER_API_URL, headers=headers, json=payload)
         if response.status_code == 200:
-            dados = response.json()
-            return dados['choices'][0]['message']['content'].strip()
-        else:
-            return f"Erro na IA ({response.status_code}): {response.text}"
+            return response.json()['choices'][0]['message']['content'].strip()
+        return f"Erro IA ({response.status_code}): {response.text}"
     except Exception as e:
-        return f"Erro de ligação à IA: {e}"
+        return f"Erro ligação IA: {e}"
 
 # --- MOTOR DE BUSCA RAPIDAPI ---
-def buscar_lugares_rapidapi(query: str, api_key: str, max_results: int, nicho: str, regiao: str, progress_callback=None):
-    headers = {
-        "x-rapidapi-key": api_key,
-        "x-rapidapi-host": "local-business-data.p.rapidapi.com"
-    }
-    querystring = {"query": query, "limit": str(max_results), "language": "pt"}
+def buscar_lugares(query, api_key, limit, nicho, regiao, progress=None):
+    headers = {"x-rapidapi-key": api_key, "x-rapidapi-host": "local-business-data.p.rapidapi.com"}
+    params = {"query": query, "limit": str(limit), "language": "pt"}
     
     try:
-        response = requests.get(SEARCH_URL, headers=headers, params=querystring)
-        if response.status_code != 200:
-            st.error("Erro na RapidAPI. Verifica a tua chave.")
-            return []
+        res = requests.get(SEARCH_URL, headers=headers, params=params)
+        if res.status_code != 200: return []
             
-        resultados_api = response.json().get("data", [])
-        resultados_finais = []
+        dados = res.json().get("data", [])
+        resultados = []
         
-        for i, lugar in enumerate(resultados_api):
-            if len(resultados_finais) >= max_results: break
+        for i, lugar in enumerate(dados):
+            if len(resultados) >= limit: break
             
-            nome_empresa = lugar.get("name", "N/A")
-            telefone = lugar.get("phone_number", "")
+            nome = lugar.get("name", "N/A")
+            tel = lugar.get("phone_number", "")
             site = lugar.get("website", "")
-            avaliacao = lugar.get("rating", "")
-            num_avaliacoes = lugar.get("review_count", 0)
+            aval = lugar.get("rating", "")
             
-            score = calcular_score_oportunidade(site, avaliacao, num_avaliacoes, telefone)
-            link_wa = gerar_link_whatsapp(telefone)
-            email_extraido = extrair_email_do_site(site)
+            score = calcular_score_oportunidade(site, aval, lugar.get("review_count", 0), tel)
             
-            resultados_finais.append({
+            resultados.append({
                 "Score": score,
-                "Nome": nome_empresa,
-                "Telefone": telefone,
-                "WhatsApp": link_wa,
-                "E-mail": email_extraido,
+                "Nome": nome,
+                "Telefone": tel,
+                "WhatsApp": gerar_link_whatsapp(tel),
+                "E-mail": extrair_email_do_site(site),
                 "Site": site,
-                "Avaliação": str(avaliacao),
-                "Nº Avaliações": str(num_avaliacoes)
+                "Avaliação": str(aval)
             })
-            if progress_callback:
-                progress_callback(len(resultados_finais), max_results, "A extrair dados e e-mails...")
+            if progress: progress(len(resultados), limit, "A extrair dados...")
                 
-        # Ordena a lista do melhor lead (maior score) para o pior
-        return sorted(resultados_finais, key=lambda x: x["Score"], reverse=True)
-    except Exception as e:
-        st.error(f"Erro técnico: {e}")
+        return sorted(resultados, key=lambda x: x["Score"], reverse=True)
+    except Exception:
         return []
 
-# --- EXPORTAÇÃO ---
+# --- EXPORTAÇÃO: WORD E PDF ---
 def criar_word(dados, nicho, regiao):
     doc = Document()
-    doc.add_heading(f"Relatório Universal: {nicho} em {regiao}", 0)
+    doc.add_heading(f"Relatório de Prospeção: {nicho} em {regiao}", 0)
     for item in dados:
         doc.add_heading(item["Nome"], level=2)
-        doc.add_paragraph(f"• Telefone: {item['Telefone']}")
-        doc.add_paragraph(f"• E-mail: {item['E-mail']}")
-        doc.add_paragraph(f"• Score Comercial: {item['Score']}")
-        doc.add_paragraph(f"• Análise Inteligente:\n{item.get('Análise Grok IA', 'Não analisado pela IA')}")
-        doc.add_paragraph("-" * 40)
+        doc.add_paragraph(f"• Contato: {item['Telefone']} | Email: {item['E-mail']}")
+        doc.add_paragraph(f"• Score: {item['Score']}")
+        doc.add_paragraph(f"• Análise IA:\n{item.get('Análise IA', 'Não analisado.')}")
+        doc.add_paragraph("-" * 30)
     buffer = BytesIO()
     doc.save(buffer)
     buffer.seek(0)
     return buffer
 
-# ---------- INTERFACE PRINCIPAL ----------
-st.title("🌍 Motor de Busca B2B e IA Estratégica")
-st.markdown("Encontra negócios, extrai contatos e usa a IA do Grok para criar abordagens perfeitas para **qualquer objetivo**.")
+def criar_pdf(dados, nicho, regiao):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    styles = getSampleStyleSheet()
+    elementos = []
+    
+    elementos.append(Paragraph(f"Relatório Estratégico: {nicho} em {regiao}", styles['Title']))
+    elementos.append(Spacer(1, 15))
+    
+    for item in dados:
+        nome = limpar_para_pdf(item['Nome'])
+        elementos.append(Paragraph(f"<b>{nome}</b> (Score: {item['Score']})", styles['Heading2']))
+        elementos.append(Paragraph(f"<b>Telefone:</b> {limpar_para_pdf(item['Telefone'])}", styles['Normal']))
+        elementos.append(Paragraph(f"<b>E-mail:</b> {limpar_para_pdf(item['E-mail'])}", styles['Normal']))
+        analise = limpar_para_pdf(item.get('Análise IA', 'Não gerado.'))
+        elementos.append(Paragraph(f"<b>Análise IA:</b> {analise}", styles['Normal']))
+        elementos.append(Spacer(1, 10))
+        
+    doc.build(elementos)
+    buffer.seek(0)
+    return buffer
 
-# Mostra aviso se as chaves não estiverem no ambiente
-if not RAPIDAPI_KEY or not GROK_API_KEY:
-    st.sidebar.warning("⚠️ Chaves API não encontradas no sistema (.env ou Secrets).")
-    RAPIDAPI_KEY = st.sidebar.text_input("RapidAPI Key", value=RAPIDAPI_KEY, type="password")
-    GROK_API_KEY = st.sidebar.text_input("Grok API Key", value=GROK_API_KEY, type="password")
+# ---------- INTERFACE PRINCIPAL ----------
+st.title("🚀 Plataforma de Prospeção Inteligente")
+st.markdown("Encontra as melhores oportunidades de negócio e utiliza IA para gerar propostas comerciais instantâneas.")
+
+if not RAPIDAPI_KEY or not OPENROUTER_API_KEY:
+    with st.sidebar:
+        st.warning("⚠️ Chaves API necessárias")
+        RAPIDAPI_KEY = st.text_input("RapidAPI Key", value=RAPIDAPI_KEY, type="password")
+        OPENROUTER_API_KEY = st.text_input("OpenRouter API Key", value=OPENROUTER_API_KEY, type="password")
+        st.markdown("[Criar conta OpenRouter Grátis](https://openrouter.ai/)")
 
 st.divider()
 
-col1, col2, col3 = st.columns([2, 2, 1])
-with col1:
-    nicho = st.text_input("Nicho / Setor", placeholder="Ex: Restaurantes, Clínicas, Lojas")
-with col2:
-    regiao = st.text_input("Cidade / Região", placeholder="Ex: Maputo, Lisboa")
-with col3:
-    max_leads = st.number_input("Qtd. Resultados", min_value=5, max_value=50, value=10)
+with st.container():
+    c1, c2, c3 = st.columns([2, 2, 1])
+    nicho = c1.text_input("🏢 Nicho / Setor", placeholder="Ex: Clínicas, Restaurantes")
+    regiao = c2.text_input("📍 Região", placeholder="Ex: Maputo, Lisboa")
+    max_leads = c3.number_input("📊 Qtd.", min_value=5, max_value=50, value=10)
 
-objetivo_busca = st.text_input("🎯 Qual é o teu objetivo com estes contatos?", 
-                               placeholder="Ex: Quero vender serviços de gestão de tráfego pago / Quero propor parceria de fornecimento de embalagens / Quero criar websites.")
+objetivo = st.text_input("🎯 Objetivo Comercial", placeholder="Ex: Quero vender gestão de tráfego pago")
 
-if st.button("🔍 Iniciar Pesquisa Rápida", type="primary", use_container_width=True):
-    if not RAPIDAPI_KEY or not nicho or not regiao or not objetivo_busca:
-        st.warning("Preenche as chaves de API, nicho, região e o teu objetivo.")
+if st.button("🔍 Iniciar Varredura do Mercado", type="primary", use_container_width=True):
+    if not RAPIDAPI_KEY or not nicho or not regiao:
+        st.error("Preenche os campos e as chaves API.")
     else:
-        query = f"{nicho} em {regiao}"
-        progress_bar = st.progress(0, text="A buscar negócios...")
-        def update_progress(current, total, fase):
-            progress_bar.progress(min(current / total, 1.0), text=f"{fase}: {current}/{total}")
+        bar = st.progress(0, "A preparar...")
+        with st.spinner("A rastrear empresas..."):
+            resultados = buscar_lugares(f"{nicho} em {regiao}", RAPIDAPI_KEY, max_leads, nicho, regiao, 
+                                      lambda c, t, msg: bar.progress(min(c/t, 1.0), msg))
+            if resultados:
+                st.session_state.update({'leads': resultados, 'n': nicho, 'r': regiao, 'obj': objetivo})
+        bar.empty()
 
-        with st.spinner("A rastrear empresas na RapidAPI..."):
-            resultados = buscar_lugares_rapidapi(query, RAPIDAPI_KEY, max_leads, nicho, regiao, update_progress)
-
-        if resultados:
-            st.session_state['resultados_cache'] = resultados
-            st.session_state['nicho_cache'] = nicho
-            st.session_state['regiao_cache'] = regiao
-            st.session_state['objetivo_cache'] = objetivo_busca
-
-# Se já houver resultados em cache
-if 'resultados_cache' in st.session_state:
-    df = pd.DataFrame(st.session_state['resultados_cache'])
-    st.success(f"{len(df)} oportunidades encontradas! Ordenadas por relevância comercial (Score).")
+if 'leads' in st.session_state:
+    df = pd.DataFrame(st.session_state['leads'])
+    st.success(f"✅ {len(df)} oportunidades validadas e ordenadas por potencial (Score).")
     st.dataframe(df, use_container_width=True)
     
-    st.markdown("### 🧠 Modo Premium: Análise com IA (Grok)")
-    st.caption("Gera um diagnóstico e uma mensagem de abordagem para os melhores resultados da tabela.")
+    st.markdown("### 🧠 Modo Premium: Abordagem IA (Llama 3 Grátis)")
+    qtd = st.slider("Analisar quantas empresas?", 1, len(df), min(3, len(df)))
     
-    qtd_analisar = st.slider("Quantas empresas queres que a IA analise agora?", 1, len(df), min(3, len(df)))
-    
-    if st.button("Gerar Estratégias com Grok IA", type="secondary"):
-        with st.spinner("O Grok está a analisar os dados e a criar abordagens..."):
-            for i in range(qtd_analisar):
-                empresa = st.session_state['resultados_cache'][i]
-                resposta_ia = analisar_com_grok(
-                    nome=empresa["Nome"], 
-                    nicho=st.session_state['nicho_cache'],
-                    site=empresa["Site"], 
-                    avaliacao=empresa["Avaliação"], 
-                    objetivo=st.session_state['objetivo_cache'],
-                    api_key=GROK_API_KEY
-                )
-                st.session_state['resultados_cache'][i]["Análise Grok IA"] = resposta_ia
+    if st.button("✨ Gerar Estratégias com IA", type="primary"):
+        with st.spinner("A IA está a redigir as mensagens..."):
+            for i in range(qtd):
+                empresa = st.session_state['leads'][i]
+                resp = analisar_com_ia(empresa["Nome"], st.session_state['n'], empresa["Site"], 
+                                     empresa["Avaliação"], st.session_state['obj'], OPENROUTER_API_KEY)
+                st.session_state['leads'][i]["Análise IA"] = resp
+            st.rerun()
             
-            st.success("Análise concluída!")
-            st.rerun() # Atualiza a página para mostrar os novos dados na tabela
-            
-    # Exportação
     st.divider()
-    st.subheader("📥 Exportar Relatório")
-    df_atualizado = pd.DataFrame(st.session_state['resultados_cache'])
+    st.subheader("📥 Exportar Relatórios")
+    df_final = pd.DataFrame(st.session_state['leads'])
     
-    b1, b2 = st.columns(2)
-    with b1:
-        csv = df_atualizado.to_csv(index=False).encode("utf-8")
-        st.download_button("⬇️ Baixar Excel (CSV)", data=csv, file_name=f"leads_{st.session_state['nicho_cache']}.csv", mime="text/csv", use_container_width=True)
-    with b2:
-        word_file = criar_word(st.session_state['resultados_cache'], st.session_state['nicho_cache'], st.session_state['regiao_cache'])
-        st.download_button("⬇️ Baixar Word", data=word_file, file_name=f"relatorio_{st.session_state['nicho_cache']}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+    # Botões de Exportação
+    b1, b2, b3 = st.columns(3)
+    b1.download_button("📊 Excel (CSV)", data=df_final.to_csv(index=False).encode("utf-8"), 
+                       file_name="leads.csv", mime="text/csv", use_container_width=True)
+    b2.download_button("📝 Documento Word", data=criar_word(st.session_state['leads'], st.session_state['n'], st.session_state['r']), 
+                       file_name="leads.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+    b3.download_button("📕 Relatório PDF", data=criar_pdf(st.session_state['leads'], st.session_state['n'], st.session_state['r']), 
+                       file_name="leads.pdf", mime="application/pdf", use_container_width=True)
