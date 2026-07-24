@@ -1,5 +1,5 @@
 """
-SCRAPER DE LEADS PREMIUM - APP (RapidAPI + Exportação PDF/Word)
+SCRAPER DE LEADS PREMIUM - APP (RapidAPI + Exportação PDF/Word corrigida)
 -----------------------------------------------------
 """
 
@@ -10,7 +10,6 @@ import re
 from io import BytesIO
 from bs4 import BeautifulSoup
 
-# Bibliotecas para Word e PDF
 from docx import Document
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -20,6 +19,14 @@ from reportlab.lib import colors
 SEARCH_URL = "https://local-business-data.p.rapidapi.com/search"
 
 st.set_page_config(page_title="Scraper Premium de Leads", page_icon="🚀", layout="wide")
+
+def limpar_para_pdf(texto):
+    """Remove caracteres que possam quebrar a geração do PDF"""
+    if not texto:
+        return ""
+    # Substitui caracteres especiais problemáticos por texto seguro
+    texto_limpo = str(texto).replace("&", "e").replace("<", "").replace(">", "")
+    return texto_limpo
 
 def extrair_email_do_site(url):
     if not url or url == "N/A":
@@ -64,7 +71,7 @@ def buscar_lugares_rapidapi(query: str, api_key: str, max_results: int, nicho: s
             nome_empresa = lugar.get("name", "N/A")
             telefone = lugar.get("phone_number", "")
             site = lugar.get("website", "")
-            status_site = "Tem Site" if site else "⚠️ Precisa de Site (Oportunidade)"
+            status_site = "Tem Site" if site else "Precisa de Site (Oportunidade)"
             link_wa = gerar_link_whatsapp(telefone)
             email_extraido = extrair_email_do_site(site)
             mensagem_fria = f"Olá, equipa da {nome_empresa}. Vi que são uma referência como {nicho} em {regiao}. Gostaria de apresentar uma proposta rápida."
@@ -89,7 +96,6 @@ def buscar_lugares_rapidapi(query: str, api_key: str, max_results: int, nicho: s
         st.error(f"Erro técnico: {e}")
         return []
 
-# Funções de Exportação (Word e PDF)
 def criar_word(dados, nicho, regiao):
     doc = Document()
     doc.add_heading(f"Relatório de Oportunidades: {nicho} em {regiao}", 0)
@@ -117,17 +123,16 @@ def criar_pdf(dados, nicho, regiao):
     styles = getSampleStyleSheet()
     titulo_estilo = ParagraphStyle('TituloCustom', parent=styles['Heading1'], fontSize=16, textColor=colors.HexColor("#1f77b4"))
     
-    elementos.append(Paragraph(f"Relatório de Leads: {nicho.capitalize()} ({regiao.capitalize()})", titulo_estilo))
+    elementos.append(Paragraph(f"Relatório de Leads: {limpar_para_pdf(nicho)} ({limpar_para_pdf(regiao)})", titulo_estilo))
     elementos.append(Spacer(1, 12))
     
-    # Preparar tabela para o PDF (Nome, Telefone, E-mail, Status)
     tabela_dados = [["Nome", "Telefone", "E-mail", "Status do Site"]]
     for item in dados:
         tabela_dados.append([
-            Paragraph(item["Nome"], styles['Normal']),
-            Paragraph(item["Telefone"], styles['Normal']),
-            Paragraph(item["E-mail (Extraído)"] or "N/A", styles['Normal']),
-            Paragraph(item["Status do Site"], styles['Normal'])
+            Paragraph(limpar_para_pdf(item["Nome"]), styles['Normal']),
+            Paragraph(limpar_para_pdf(item["Telefone"]), styles['Normal']),
+            Paragraph(limpar_para_pdf(item["E-mail (Extraído)"] or "N/A"), styles['Normal']),
+            Paragraph(limpar_para_pdf(item["Status do Site"]), styles['Normal'])
         ])
         
     tabela = Table(tabela_dados, colWidths=[130, 90, 140, 140])
@@ -204,4 +209,4 @@ if 'resultados_cache' in st.session_state:
     with b3:
         pdf_file = criar_pdf(resultados, nicho_atual, regiao_atual)
         st.download_button("⬇️ Baixar PDF (.pdf)", data=pdf_file, file_name=f"relatorio_{nicho_atual}_{regiao_atual}.pdf", mime="application/pdf", use_container_width=True)
-    
+        
