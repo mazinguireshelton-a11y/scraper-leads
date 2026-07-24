@@ -101,7 +101,7 @@ def analisar_com_grok(nome, nicho, site, avaliacao, objetivo, api_key):
     """
     
     payload = {
-        "model": "grok-beta",
+        "model": "grok-2-latest",
         "messages": [
             {"role": "system", "content": prompt_sistema},
             {"role": "user", "content": prompt_utilizador}
