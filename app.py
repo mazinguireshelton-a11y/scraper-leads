@@ -1,6 +1,6 @@
 """
-MOTOR DE BUSCA B2B UNIVERSAL COM IA (OpenRouter)
------------------------------------------------------
+MOTOR DE BUSCA B2B UNIVERSAL COM IA (OpenRouter) - EDICAO PREMIUM
+-----------------------------------------------------------------
 """
 
 import streamlit as st
@@ -10,59 +10,184 @@ import re
 import os
 from io import BytesIO
 from bs4 import BeautifulSoup
+from datetime import date
+from docx import Document
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from supabase import create_client
 
-# set_page_config precisa ser o PRIMEIRO comando Streamlit do script
-st.set_page_config(page_title="Prospeção B2B com IA", page_icon="💼", layout="wide")
+# 1. Configuração da página (Primeiro comando Streamlit)
+st.set_page_config(
+    page_title="Prospeção B2B Pro", 
+    page_icon="⚡", 
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
-# Tenta carregar o dotenv para testes locais
+# Tenta carregar dotenv em ambiente local
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
     pass
 
-from docx import Document
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
-
 # --- CONFIGURAÇÃO DE CHAVES DE API ---
 try:
     RAPIDAPI_KEY = st.secrets.get("RAPIDAPI_KEY", os.getenv("RAPIDAPI_KEY", ""))
     OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", os.getenv("OPENROUTER_API_KEY", ""))
     GOOGLE_PLACES_API_KEY = st.secrets.get("GOOGLE_PLACES_API_KEY", os.getenv("GOOGLE_PLACES_API_KEY", ""))
+    SUPABASE_URL = st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL", ""))
+    SUPABASE_SERVICE_KEY = st.secrets.get("SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_SERVICE_KEY", ""))
 except Exception:
     RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "")
     OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
     GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
-
-SEARCH_URL = "https://local-business-data.p.rapidapi.com/search"
-# URL CORRETO DO OPENROUTER
-OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-
-# --- CONTROLE DE ACESSO REAL: Supabase (cadastro + login + limite persistente) ---
-from supabase import create_client
-from datetime import date
-
-try:
-    SUPABASE_URL = st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL", ""))
-    SUPABASE_SERVICE_KEY = st.secrets.get("SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_SERVICE_KEY", ""))
-except Exception:
     SUPABASE_URL = os.getenv("SUPABASE_URL", "")
     SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 
-LIMITE_DIARIO_PADRAO = 5  # plano grátis. Quando o cliente pagar, sobe manualmente pra 20 na tabela "clientes" do Supabase
-
-# E-mails que não têm limite diário (o dono do negócio, por exemplo)
+SEARCH_URL = "https://local-business-data.p.rapidapi.com/search"
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+LIMITE_DIARIO_PADRAO = 5
 EMAILS_ADMIN = ["mazinguireshelton@gmail.com"]
 
+# --- CSS PERSONALIZADO E ANIMAÇÕES LEVES ---
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* Reset e Variáveis Globais */
+:root {
+    --bg-dark: #090D16;
+    --card-bg: rgba(22, 27, 38, 0.7);
+    --border-color: rgba(255, 255, 255, 0.08);
+    --accent: #3B82F6;
+    --accent-glow: rgba(59, 130, 246, 0.35);
+    --text-primary: #F3F4F6;
+    --text-secondary: #9CA3AF;
+}
+
+/* Animações CSS Puras */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulseGlow {
+    0% { box-shadow: 0 0 5px var(--accent-glow); }
+    50% { box-shadow: 0 0 18px var(--accent-glow); }
+    100% { box-shadow: 0 0 5px var(--accent-glow); }
+}
+
+.stApp {
+    background-color: var(--bg-dark);
+    color: var(--text-primary);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+/* Aplicação de Animação em Blocos Principais */
+div[data-testid="stForm"], 
+div[data-testid="stExpander"], 
+.stDataFrame, 
+.stButton>button {
+    animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Cabeçalhos */
+h1, h2, h3 {
+    font-family: 'Plus Jakarta Sans', sans-serif !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.02em !important;
+    color: #FFFFFF !important;
+}
+
+/* Estilo Glassmorphism nos Inputs */
+.stTextInput input, .stTextArea textarea, .stNumberInput input {
+    background: rgba(15, 20, 30, 0.6) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 10px !important;
+    color: var(--text-primary) !important;
+    font-family: 'Plus Jakarta Sans', sans-serif !important;
+    backdrop-filter: blur(8px);
+    transition: all 0.25s ease !important;
+}
+
+.stTextInput input:focus, .stTextArea textarea:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 12px var(--accent-glow) !important;
+}
+
+/* Botão Principal com Efeito Iluminado */
+.stButton>button[kind="primary"] {
+    background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%) !important;
+    color: #FFFFFF !important;
+    border: none !important;
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    padding: 0.6rem 1.2rem !important;
+    transition: all 0.2s ease !important;
+    animation: pulseGlow 3s infinite;
+}
+
+.stButton>button[kind="primary"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px var(--accent-glow) !important;
+}
+
+/* Botões Secundários */
+.stButton>button {
+    background: var(--card-bg) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 10px !important;
+    color: var(--text-primary) !important;
+    backdrop-filter: blur(10px);
+    transition: all 0.2s ease !important;
+}
+
+.stButton>button:hover {
+    border-color: var(--accent) !important;
+    color: var(--accent) !important;
+}
+
+/* Expanders (Cards de Propostas) com Vidro Fosco */
+div[data-testid="stExpander"] {
+    background: var(--card-bg) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 12px !important;
+    backdrop-filter: blur(12px);
+    margin-bottom: 0.8rem;
+}
+
+/* Barra Lateral */
+section[data-testid="stSidebar"] {
+    background-color: rgba(12, 16, 25, 0.95) !important;
+    border-right: 1px solid var(--border-color) !important;
+}
+
+/* Estilização para Dispositivos Móveis */
+@media (max-width: 768px) {
+    .stApp { padding: 0.5rem; }
+    .stButton>button { width: 100%; }
+}
+</style>
+""", unsafe_allow_html=True)
+
+# --- BANCO DE DADOS SUPABASE ---
 @st.cache_resource
 def get_supabase():
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return None
     return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 def garantir_registro_cliente(user_id, email, apelido=None):
-    """Cria a linha do cliente na tabela 'clientes' se ainda não existir."""
     sb = get_supabase()
+    if not sb: return
     existente = sb.table("clientes").select("*").eq("id", user_id).execute()
     if not existente.data:
         sb.table("clientes").insert({
@@ -72,28 +197,29 @@ def garantir_registro_cliente(user_id, email, apelido=None):
 
 def buscar_apelido(user_id, email):
     sb = get_supabase()
+    if not sb: return email.split("@")[0]
     resp = sb.table("clientes").select("apelido").eq("id", user_id).execute()
     if resp.data and resp.data[0].get("apelido"):
         return resp.data[0]["apelido"]
     return email.split("@")[0]
 
 def verificar_e_registrar_uso(user_id, email=""):
-    """Retorna (permitido: bool, mensagem: str). Uso salvo no Supabase - não zera ao reiniciar o app."""
     if email in EMAILS_ADMIN:
-        return True, "Acesso admin — sem limite diário."
+        return True, "Acesso Administrador ativado."
 
     sb = get_supabase()
-    hoje = str(date.today())
+    if not sb:
+        return True, "Modo de demonstração sem limites ativado."
 
+    hoje = str(date.today())
     cliente = sb.table("clientes").select("limite_diario").eq("id", user_id).execute()
     limite = cliente.data[0]["limite_diario"] if cliente.data else LIMITE_DIARIO_PADRAO
-
     registro = sb.table("uso_diario").select("*").eq("user_id", user_id).eq("data", hoje).execute()
 
     if registro.data:
         contagem = registro.data[0]["contagem"]
         if contagem >= limite:
-            return False, f"Limite diário de {limite} buscas atingido. Volta amanhã."
+            return False, f"Limite diário de {limite} buscas atingido."
         sb.table("uso_diario").update({"contagem": contagem + 1}).eq("user_id", user_id).eq("data", hoje).execute()
         restantes = limite - (contagem + 1)
     else:
@@ -102,189 +228,94 @@ def verificar_e_registrar_uso(user_id, email=""):
 
     return True, f"{restantes} buscas restantes hoje."
 
+# --- TELA DE AUTENTICAÇÃO ---
 def tela_login():
-    st.title("Autenticação")
-    st.caption("Cria conta ou entra com o teu e-mail e senha.")
+    st.markdown("<h2 style='text-align: center; margin-bottom: 2rem;'>⚡ Aceder ao SaaS</h2>", unsafe_allow_html=True)
+    
+    col_centered = st.columns([1, 2, 1])[1] if not st.session_state.get("is_mobile", False) else [st]
+    
+    with col_centered:
+        aba_entrar, aba_criar = st.tabs(["Entrar", "Criar conta"])
+        sb = get_supabase()
 
-    aba_entrar, aba_criar = st.tabs(["Entrar", "Criar conta"])
-    sb = get_supabase()
+        with aba_entrar:
+            email = st.text_input("E-mail", key="login_email")
+            senha = st.text_input("Senha", type="password", key="login_senha")
+            if st.button("Entrar no Painel", type="primary", key="btn_entrar", use_container_width=True):
+                if sb:
+                    try:
+                        resp = sb.auth.sign_in_with_password({"email": email, "password": senha})
+                        garantir_registro_cliente(resp.user.id, email)
+                        st.session_state["autenticado"] = True
+                        st.session_state["chave_cliente"] = resp.user.id
+                        st.session_state["email_cliente"] = email
+                        st.session_state["nome_cliente"] = buscar_apelido(resp.user.id, email)
+                        st.rerun()
+                    except Exception:
+                        st.error("E-mail ou senha incorretos.")
+                else:
+                    # Fallback local para desenvolvimento
+                    st.session_state["autenticado"] = True
+                    st.session_state["chave_cliente"] = "demo"
+                    st.session_state["email_cliente"] = email or "demo@saas.com"
+                    st.session_state["nome_cliente"] = email.split("@")[0] if email else "Utilizador"
+                    st.rerun()
 
-    with aba_entrar:
-        email = st.text_input("E-mail", key="login_email")
-        senha = st.text_input("Senha", type="password", key="login_senha")
-        if st.button("Entrar", type="primary", key="btn_entrar"):
-            try:
-                resp = sb.auth.sign_in_with_password({"email": email, "password": senha})
-                garantir_registro_cliente(resp.user.id, email)
-                st.session_state["autenticado"] = True
-                st.session_state["chave_cliente"] = resp.user.id
-                st.session_state["email_cliente"] = email
-                st.session_state["nome_cliente"] = buscar_apelido(resp.user.id, email)
-                st.rerun()
-            except Exception as e:
-                st.error("E-mail ou senha inválidos, ou o e-mail ainda não foi confirmado.")
-
-    with aba_criar:
-        novo_email = st.text_input("E-mail", key="cad_email")
-        novo_apelido = st.text_input("Como queres ser chamado (apelido)", key="cad_apelido", placeholder="Ex: João, Padaria Central")
-        nova_senha = st.text_input("Senha (mínimo 6 caracteres)", type="password", key="cad_senha")
-        if st.button("Criar conta", type="primary", key="btn_criar"):
-            try:
-                resp = sb.auth.sign_up({"email": novo_email, "password": nova_senha})
-                if resp.user:
-                    garantir_registro_cliente(resp.user.id, novo_email, novo_apelido)
-                st.success("Conta criada! Confirma o link enviado pro teu e-mail antes de entrar.")
-            except Exception as e:
-                st.error(f"Erro ao criar conta: {e}")
+        with aba_criar:
+            novo_email = st.text_input("E-mail", key="cad_email")
+            novo_apelido = st.text_input("Nome / Empresa", key="cad_apelido")
+            nova_senha = st.text_input("Senha", type="password", key="cad_senha")
+            if st.button("Criar Conta", type="primary", key="btn_criar", use_container_width=True):
+                if sb:
+                    try:
+                        resp = sb.auth.sign_up({"email": novo_email, "password": nova_senha})
+                        if resp.user:
+                            garantir_registro_cliente(resp.user.id, novo_email, novo_apelido)
+                        st.success("Conta criada! Confirma o e-mail enviado.")
+                    except Exception as e:
+                        st.error(f"Erro ao criar conta: {e}")
+                else:
+                    st.info("Configura as chaves do Supabase para guardar utilizadores reais.")
 
     st.stop()
 
 if "autenticado" not in st.session_state:
     tela_login()
 
-# --- ESTILO VISUAL: CORPORATIVO MINIMALISTA ---
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
-
-:root {
-    --bg: #0E1117;
-    --bg-elevado: #161A22;
-    --texto: #E6EDF3;
-    --texto-fraco: #7D8590;
-    --destaque: #2F81F7;
-    --borda: #30363D;
-}
-
-.stApp { background-color: var(--bg); color: var(--texto); }
-
-h1, h2, h3, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
-    font-family: 'Inter', sans-serif !important;
-    color: var(--texto) !important;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-}
-
-p, span, label, .stMarkdown, .stCaption { 
-    font-family: 'Inter', sans-serif !important; 
-}
-
-.stDataFrame, .stDataFrame * , [data-testid="stMetricValue"] {
-    font-family: 'JetBrains Mono', monospace !important;
-}
-
-.stTextInput input, .stTextArea textarea, .stNumberInput input {
-    background-color: var(--bg) !important;
-    color: var(--texto) !important;
-    border: 1px solid var(--borda) !important;
-    border-radius: 6px !important;
-    font-family: 'Inter', sans-serif !important;
-    transition: border-color 0.2s ease;
-}
-
-.stTextInput input:focus, .stTextArea textarea:focus {
-    border-color: var(--destaque) !important;
-    box-shadow: none !important;
-}
-
-.stButton>button {
-    background-color: var(--bg-elevado);
-    color: var(--texto);
-    border: 1px solid var(--borda);
-    border-radius: 6px;
-    font-family: 'Inter', sans-serif;
-    font-weight: 500;
-    font-size: 0.9rem;
-    transition: all 0.2s ease-in-out;
-}
-
-.stButton>button:hover {
-    border-color: var(--destaque);
-    color: var(--destaque);
-    background-color: transparent;
-}
-
-.stButton>button[kind="primary"] {
-    background-color: var(--destaque);
-    color: #ffffff;
-    border: none;
-}
-
-.stButton>button[kind="primary"]:hover {
-    opacity: 0.85;
-    color: #ffffff;
-    background-color: var(--destaque);
-}
-
-.streamlit-expanderHeader {
-    background-color: var(--bg-elevado) !important;
-    color: var(--texto) !important;
-    border-bottom: 1px solid var(--borda) !important;
-    font-family: 'Inter', sans-serif !important;
-    border-radius: 6px 6px 0 0;
-}
-
-div[data-testid="stExpander"] {
-    border: 1px solid var(--borda) !important;
-    border-radius: 6px !important;
-    background-color: var(--bg-elevado);
-}
-
-section[data-testid="stSidebar"] {
-    background-color: var(--bg-elevado);
-    border-right: 1px solid var(--borda);
-}
-
-hr { 
-    border-color: var(--borda) !important; 
-}
-</style>
-""", unsafe_allow_html=True)
-
-
-# --- FUNÇÕES DE LIMPEZA E EXTRAÇÃO ---
+# --- FUNÇÕES DE NEGÓCIO E RASTREIO ---
 def limpar_para_pdf(texto):
-    if not texto:
-        return "N/A"
-    return str(texto).replace("&", "e").replace("<", "").replace(">", "")
+    return str(texto).replace("&", "e").replace("<", "").replace(">", "") if texto else "N/A"
 
 def extrair_email_do_site(url):
-    if not url or url == "N/A":
-        return ""
+    if not url or url == "N/A": return ""
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        headers = {'User-Agent': 'Mozilla/5.0'}
         resposta = requests.get(url, headers=headers, timeout=3)
         emails = set(re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", resposta.text))
         validos = [e for e in emails if not e.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))]
         return ", ".join(validos[:2])
-    except:
+    except Exception:
         return ""
 
 def gerar_link_whatsapp(telefone, mensagem=""):
     if not telefone: return ""
     num = re.sub(r'\D', '', str(telefone))
     if not num: return ""
-    if mensagem:
-        from urllib.parse import quote
-        return f"https://wa.me/{num}?text={quote(mensagem)}"
-    return f"https://wa.me/{num}"
+    from urllib.parse import quote
+    return f"https://wa.me/{num}?text={quote(mensagem)}" if mensagem else f"https://wa.me/{num}"
 
 def extrair_mensagem_da_analise(analise_ia):
-    """Puxa só a parte 'MENSAGEM' da resposta da IA, sem o rótulo nem o rodapé do modelo."""
-    if not analise_ia:
-        return ""
+    if not analise_ia: return ""
     match = re.search(r"MENSAGEM:?\s*(.+?)(?:\n\n_\(modelo|\Z)", analise_ia, re.DOTALL | re.IGNORECASE)
     return match.group(1).strip() if match else analise_ia.split("_(modelo")[0].strip()
 
 def enviar_email_gmail(remetente, senha_app, destinatario, assunto, corpo):
-    """Envia e-mail via Gmail SMTP usando uma Senha de App (não a senha normal da conta)."""
     import smtplib
     from email.mime.text import MIMEText
-
     if not remetente or not senha_app:
-        return False, "Configura o Gmail (endereço + Senha de App) na barra lateral primeiro."
+        return False, "Insere as tuas credenciais do Gmail na barra lateral."
     if not destinatario:
-        return False, "Este lead não tem e-mail encontrado."
+        return False, "Nenhum e-mail de destino encontrado."
 
     msg = MIMEText(corpo)
     msg["Subject"] = assunto
@@ -295,9 +326,7 @@ def enviar_email_gmail(remetente, senha_app, destinatario, assunto, corpo):
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as servidor:
             servidor.login(remetente, senha_app)
             servidor.sendmail(remetente, [destinatario], msg.as_string())
-        return True, "E-mail enviado!"
-    except smtplib.SMTPAuthenticationError:
-        return False, "Falha na autenticação — confirma que é uma Senha de App (16 caracteres), não a senha normal."
+        return True, "E-mail enviado com sucesso!"
     except Exception as e:
         return False, f"Erro ao enviar: {e}"
 
@@ -307,109 +336,46 @@ def calcular_score_oportunidade(site, avaliacao, num_avaliacoes, telefone):
     try:
         nota = float(avaliacao) if avaliacao else 0.0
         if 0 < nota < 4.0: score += 20
-    except: pass
+    except Exception: pass
     if not telefone: score -= 10
     return score
 
-# --- INTEGRAÇÃO COM A IA DO OPENROUTER ---
-# Modelos em ordem de tentativa. O auto-router 'openrouter/free' escolhe
-# sozinho um modelo grátis disponível — evita quebrar quando um ID específico
-# é descontinuado (o catálogo de modelos grátis muda com frequência).
-MODELOS_FALLBACK = [
-    "openrouter/free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "google/gemma-3-27b-it:free",
-]
-
+# --- INTEGRAÇÃO IA ---
 def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key):
-    if not api_key:
-        return "Erro: Chave API OpenRouter em falta."
+    if not api_key: return "Erro: Chave API OpenRouter necessária."
 
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
         "HTTP-Referer": "https://streamlit.io",
-        "X-Title": "Motor B2B Universal"
+        "X-Title": "Motor B2B"
     }
 
     prompt = f"""
-    O meu objetivo é: '{objetivo}'.
-    Analisa esta empresa: Nome: {nome} (Nicho: {nicho}). Website: {'Sim' if site else 'Não'}. Avaliação: {avaliacao}.
+    Objetivo: '{objetivo}'.
+    Empresa: {nome} (Nicho: {nicho}). Website: {'Sim' if site else 'Não'}. Avaliação: {avaliacao}.
     Retorna APENAS:
-    1. DIAGNÓSTICO: (1 frase avaliando a empresa)
-    2. MENSAGEM: (1 mensagem de WhatsApp curta e persuasiva para abordagem)
+    1. DIAGNÓSTICO: (1 frase curta)
+    2. MENSAGEM: (1 mensagem persuasiva de WhatsApp para abordagem)
     """
 
-    erro_final = ""
-    for modelo in MODELOS_FALLBACK:
-        payload = {
-            "model": modelo,
-            "messages": [
-                {"role": "system", "content": "És um estratega de negócios B2B. Responde sempre em Português."},
-                {"role": "user", "content": prompt}
-            ]
-        }
+    for modelo in ["openrouter/free", "meta-llama/llama-3.3-70b-instruct:free"]:
         try:
-            response = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
-            if response.status_code == 200:
-                dados = response.json()
-                texto = dados['choices'][0]['message']['content'].strip()
-                modelo_real = dados.get('model', modelo)  # o OpenRouter informa qual modelo respondeu de fato
-                return f"{texto}\n\n_(modelo: {modelo_real})_"
-            else:
-                erro_final = f"Erro IA ({response.status_code}): {response.text[:150]}"
-                continue  # tenta o próximo modelo da lista
-        except Exception as e:
-            erro_final = f"Erro ligação IA: {e}"
+            payload = {"model": modelo, "messages": [{"role": "user", "content": prompt}]}
+            res = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=25)
+            if res.status_code == 200:
+                texto = res.json()['choices'][0]['message']['content'].strip()
+                return f"{texto}"
+        except Exception:
             continue
+    return "Não foi possível gerar análise no momento."
 
-    return erro_final or "Erro: nenhum modelo grátis disponível no momento."
-
-# --- MOTOR DE BUSCA RAPIDAPI (pago, ~$1,25-2,50 por 1000) ---
-def buscar_lugares(query, api_key, limit, nicho, regiao, progress=None):
-    headers = {"x-rapidapi-key": api_key, "x-rapidapi-host": "local-business-data.p.rapidapi.com"}
-    params = {"query": query, "limit": str(limit), "language": "pt"}
-    
-    try:
-        res = requests.get(SEARCH_URL, headers=headers, params=params)
-        if res.status_code != 200: return []
-            
-        dados = res.json().get("data", [])
-        resultados = []
-        
-        for i, lugar in enumerate(dados):
-            if len(resultados) >= limit: break
-            
-            nome = lugar.get("name", "N/A")
-            tel = lugar.get("phone_number", "")
-            site = lugar.get("website", "")
-            aval = lugar.get("rating", "")
-            
-            score = calcular_score_oportunidade(site, aval, lugar.get("review_count", 0), tel)
-            
-            resultados.append({
-                "Score": score,
-                "Nome": nome,
-                "Telefone": tel,
-                "E-mail": extrair_email_do_site(site),
-                "Site": site,
-                "Avaliação": str(aval),
-                "Fonte": "RapidAPI"
-            })
-            if progress: progress(len(resultados), limit, "A extrair dados (RapidAPI)...")
-                
-        return resultados
-    except Exception:
-        return []
-
-# --- MOTOR DE BUSCA OPENSTREETMAP (100% grátis, sem limite) ---
-NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-OSM_HEADERS = {"User-Agent": "scraper-leads-app/1.0"}
-
+# --- BUSCA EM CASCATA ---
 def buscar_lugares_osm(nicho, regiao, limit, progress=None):
     try:
-        geo = requests.get(NOMINATIM_URL, params={"q": regiao, "format": "json", "limit": 1}, headers=OSM_HEADERS, timeout=15).json()
+        geo = requests.get("https://nominatim.openstreetmap.org/search", 
+                           params={"q": regiao, "format": "json", "limit": 1}, 
+                           headers={"User-Agent": "scraper-app/1.0"}, timeout=15).json()
         if not geo: return []
         lat, lon = float(geo[0]["lat"]), float(geo[0]["lon"])
 
@@ -418,11 +384,10 @@ def buscar_lugares_osm(nicho, regiao, limit, progress=None):
         (
           node["name"~"{nicho}",i](around:20000,{lat},{lon});
           node["shop"](around:20000,{lat},{lon})["name"~"{nicho}",i];
-          node["amenity"](around:20000,{lat},{lon})["name"~"{nicho}",i];
         );
         out body {limit * 2};
         """
-        resp = requests.post(OVERPASS_URL, data={"data": query}, headers=OSM_HEADERS, timeout=30)
+        resp = requests.post("https://overpass-api.de/api/interpreter", data={"data": query}, timeout=30)
         if resp.status_code != 200: return []
 
         resultados = []
@@ -439,185 +404,72 @@ def buscar_lugares_osm(nicho, regiao, limit, progress=None):
             score = calcular_score_oportunidade(site, "", 0, tel)
 
             resultados.append({
-                "Score": score,
-                "Nome": nome,
-                "Telefone": tel,
+                "Score": score, "Nome": nome, "Telefone": tel,
                 "E-mail": extrair_email_do_site(site) if site else "",
-                "Site": site,
-                "Avaliação": "",
-                "Fonte": "OpenStreetMap"
+                "Site": site, "Avaliação": "N/A", "Fonte": "OpenStreetMap"
             })
-            if progress: progress(len(resultados), limit, "A buscar (OpenStreetMap, grátis)...")
-
+            if progress: progress(len(resultados), limit, "Localizando empresas...")
         return resultados
     except Exception:
         return []
 
-# --- MOTOR DE BUSCA GOOGLE PLACES DIRETO (pago, ~$32-40 por 1000 - último recurso) ---
-def buscar_lugares_google(nicho, regiao, limit, google_api_key, progress=None):
-    if not google_api_key: return []
-    try:
-        url = "https://places.googleapis.com/v1/places:searchText"
-        headers = {
-            "Content-Type": "application/json",
-            "X-Goog-Api-Key": google_api_key,
-            "X-Goog-FieldMask": "places.displayName,places.nationalPhoneNumber,places.websiteUri,places.rating"
-        }
-        body = {"textQuery": f"{nicho} em {regiao}", "maxResultCount": min(limit, 20)}
-        res = requests.post(url, headers=headers, json=body, timeout=15)
-        if res.status_code != 200: return []
+# --- INTERFACE PRINCIPAL ---
+c_title, c_user = st.columns([3, 1])
+with c_title:
+    st.markdown("<h1 style='font-size: 1.8rem; margin:0;'>⚡ Prospeção Inteligente B2B</h1>", unsafe_allow_html=True)
+    st.caption("Encontra clientes e gera abordagens personalizadas com IA.")
 
-        resultados = []
-        for lugar in res.json().get("places", [])[:limit]:
-            nome = lugar.get("displayName", {}).get("text", "N/A")
-            tel = lugar.get("nationalPhoneNumber", "")
-            site = lugar.get("websiteUri", "")
-            aval = lugar.get("rating", "")
-            score = calcular_score_oportunidade(site, aval, 0, tel)
-
-            resultados.append({
-                "Score": score,
-                "Nome": nome,
-                "Telefone": tel,
-                "E-mail": extrair_email_do_site(site) if site else "",
-                "Site": site,
-                "Avaliação": str(aval),
-                "Fonte": "Google Places"
-            })
-            if progress: progress(len(resultados), limit, "A buscar (Google Places, pago)...")
-
-        return resultados
-    except Exception:
-        return []
-
-# --- CASCATA: usa a fonte grátis primeiro, só paga pelo que faltar ---
-def buscar_leads_cascata(nicho, regiao, limit, rapidapi_key, google_api_key="", progress=None):
-    """
-    Ordem: 1) OpenStreetMap (grátis) -> 2) RapidAPI (barato) -> 3) Google Places (caro, só se ainda faltar).
-    Cada camada só busca o que falta pra completar o 'limit', minimizando gasto.
-    """
-    resultados = buscar_lugares_osm(nicho, regiao, limit, progress)
-    vistos = {r["Nome"].lower() for r in resultados}
-
-    faltam = limit - len(resultados)
-    if faltam > 0 and rapidapi_key:
-        extras = buscar_lugares(f"{nicho} em {regiao}", rapidapi_key, faltam, nicho, regiao, progress)
-        for r in extras:
-            if r["Nome"].lower() not in vistos:
-                resultados.append(r)
-                vistos.add(r["Nome"].lower())
-
-    faltam = limit - len(resultados)
-    if faltam > 0 and google_api_key:
-        extras = buscar_lugares_google(nicho, regiao, faltam, google_api_key, progress)
-        for r in extras:
-            if r["Nome"].lower() not in vistos:
-                resultados.append(r)
-                vistos.add(r["Nome"].lower())
-
-    return sorted(resultados, key=lambda x: x["Score"], reverse=True)
-
-# --- EXPORTAÇÃO: WORD E PDF ---
-def criar_word(dados, nicho, regiao):
-    doc = Document()
-    doc.add_heading(f"Relatório de Prospeção: {nicho} em {regiao}", 0)
-    for item in dados:
-        doc.add_heading(item["Nome"], level=2)
-        doc.add_paragraph(f"• Contato: {item['Telefone']} | Email: {item['E-mail']}")
-        doc.add_paragraph(f"• Score Comercial: {item['Score']}")
-        doc.add_paragraph(f"• Análise IA:\n{item.get('Análise IA', 'Não analisado.')}")
-        doc.add_paragraph("-" * 30)
-    buffer = BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
-    return buffer
-
-def criar_pdf(dados, nicho, regiao):
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter)
-    styles = getSampleStyleSheet()
-    elementos = []
-    
-    elementos.append(Paragraph(f"Relatório Estratégico: {nicho} em {regiao}", styles['Title']))
-    elementos.append(Spacer(1, 15))
-    
-    for item in dados:
-        nome = limpar_para_pdf(item['Nome'])
-        elementos.append(Paragraph(f"<b>{nome}</b> (Score: {item['Score']})", styles['Heading2']))
-        elementos.append(Paragraph(f"<b>Telefone:</b> {limpar_para_pdf(item['Telefone'])}", styles['Normal']))
-        elementos.append(Paragraph(f"<b>E-mail:</b> {limpar_para_pdf(item['E-mail'])}", styles['Normal']))
-        analise = limpar_para_pdf(item.get('Análise IA', 'Não gerado.'))
-        elementos.append(Paragraph(f"<b>Análise IA:</b> {analise}", styles['Normal']))
-        elementos.append(Spacer(1, 10))
-        
-    doc.build(elementos)
-    buffer.seek(0)
-    return buffer
-
-# ---------- INTERFACE PRINCIPAL ----------
-col_titulo, col_user = st.columns([4, 1])
-with col_titulo:
-    st.title("Plataforma de Prospeção Inteligente")
-with col_user:
-    st.caption(f"{st.session_state.get('nome_cliente', '')}")
-    if st.button("Sair"):
+with c_user:
+    st.write(f"👤 **{st.session_state.get('nome_cliente', 'Utilizador')}**")
+    if st.button("Sair", key="btn_logout"):
         st.session_state.clear()
         st.rerun()
 
-st.markdown("Encontra oportunidades de negócio e utiliza IA para gerar propostas comerciais adaptadas ao teu objetivo.")
-
-if not RAPIDAPI_KEY or not OPENROUTER_API_KEY:
-    with st.sidebar:
-        st.warning("⚠️ Chaves API necessárias")
-        RAPIDAPI_KEY = st.text_input("RapidAPI Key", value=RAPIDAPI_KEY, type="password")
-        OPENROUTER_API_KEY = st.text_input("OpenRouter API Key", value=OPENROUTER_API_KEY, type="password")
-        st.markdown("[Criar conta OpenRouter Grátis](https://openrouter.ai/)")
-
+# Sidebar de Configurações do Gmail
 with st.sidebar:
-    st.divider()
-    st.subheader("Teu Gmail (pra enviar propostas)")
-    st.caption("Cada pessoa usa o próprio Gmail — os e-mails saem em teu nome, não do dono do app.")
-    GMAIL_ENDERECO = st.text_input("Teu Gmail", placeholder="tuemail@gmail.com")
-    GMAIL_APP_PASSWORD = st.text_input("Senha de App do teu Gmail", type="password",
-                                        help="Não é a senha normal! Gera em: myaccount.google.com → Segurança → Senhas de app (precisa de verificação em 2 etapas ativada na TUA conta Google)")
-    st.caption("As credenciais não são salvas em nenhum lugar — ficam só nesta sessão do navegador e somem quando fechares a página.")
+    st.subheader("⚙️ Configurações de Envio")
+    GMAIL_ENDERECO = st.text_input("O teu Gmail", placeholder="exemplo@gmail.com")
+    GMAIL_APP_PASSWORD = st.text_input("Senha de App do Gmail", type="password", help="Gera nas configurações de Segurança da Google (Senhas de App).")
+    st.caption("Credenciais mantidas de forma temporária nesta sessão.")
 
-st.divider()
+st.markdown("<hr style='border-color: rgba(255,255,255,0.08); margin: 1rem 0;'>", unsafe_allow_html=True)
 
+# Formulário de Busca
 col1, col2, col3 = st.columns([2, 2, 1])
 nicho = col1.text_input("Nicho / Setor", placeholder="Ex: Clínicas, Restaurantes")
 regiao = col2.text_input("Região", placeholder="Ex: Maputo, Lisboa")
-max_leads = col3.number_input("Quantidade máxima", min_value=5, max_value=50, value=10)
+max_leads = col3.number_input("Qtd. Máxima", min_value=5, max_value=50, value=10)
 
-objetivo = st.text_input("Objetivo Comercial", placeholder="Ex: Quero vender serviços de marketing digital")
+objetivo = st.text_input("Objetivo Comercial", placeholder="Ex: Vender gestão de redes sociais e websites")
 
-if st.button("Iniciar Varredura →", type="primary", use_container_width=True):
-    if not RAPIDAPI_KEY or not nicho or not regiao:
-        st.error("Preenche os campos e as chaves API.")
+if st.button("Iniciar Varredura 🚀", type="primary", use_container_width=True):
+    if not nicho or not regiao:
+        st.warning("Preenche o Nicho e a Região para pesquisar.")
     else:
-        permitido, msg_uso = verificar_e_registrar_uso(st.session_state["chave_cliente"], st.session_state.get("email_cliente", ""))
+        permitido, msg_uso = verificar_e_registrar_uso(st.session_state.get("chave_cliente", "demo"), st.session_state.get("email_cliente", ""))
         if not permitido:
             st.error(msg_uso)
         else:
-            st.info(f"✅ {msg_uso}")
-            bar = st.progress(0, "A preparar...")
-            with st.spinner("A rastrear empresas (grátis primeiro, pago só se faltar)..."):
-                resultados = buscar_leads_cascata(nicho, regiao, max_leads, RAPIDAPI_KEY, GOOGLE_PLACES_API_KEY,
-                                          lambda c, t, msg: bar.progress(min(c/t, 1.0), msg))
-                if resultados:
-                    st.session_state.update({'leads': resultados, 'n': nicho, 'r': regiao, 'obj': objetivo})
+            bar = st.progress(0, "Iniciando...")
+            resultados = buscar_lugares_osm(nicho, regiao, max_leads, lambda c, t, m: bar.progress(min(c/t, 1.0), m))
             bar.empty()
+            if resultados:
+                st.session_state.update({'leads': resultados, 'n': nicho, 'r': regiao, 'obj': objetivo})
+            else:
+                st.info("Nenhuma empresa encontrada para essa região com este termo.")
 
+# Exibição de Resultados
 if 'leads' in st.session_state:
     df = pd.DataFrame(st.session_state['leads'])
-    st.success(f"✅ {len(df)} oportunidades validadas e ordenadas por potencial (Score).")
+    st.markdown(f"### 🎯 Oportunidades Encontradas ({len(df)})")
     st.dataframe(df, use_container_width=True)
-    
-    st.markdown("### 🧠 Modo Premium: Abordagem IA (Gratuita)")
-    qtd = st.slider("Analisar quantas empresas?", 1, len(df), min(3, len(df)))
-    
-    if st.button("Gerar Estratégias com IA", type="primary"):
-        with st.spinner("A IA está a redigir as mensagens..."):
+
+    st.markdown("---")
+    st.markdown("### 🧠 Gerar Abordagens com IA")
+    qtd = st.slider("Quantidade de empresas para analisar:", 1, len(df), min(3, len(df)))
+
+    if st.button("Gerar Propostas com IA 🤖", type="primary"):
+        with st.spinner("A IA está a redigir as mensagens de abordagem..."):
             for i in range(qtd):
                 empresa = st.session_state['leads'][i]
                 resp = analisar_com_ia(empresa["Nome"], st.session_state['n'], empresa["Site"], 
@@ -625,53 +477,34 @@ if 'leads' in st.session_state:
                 st.session_state['leads'][i]["Análise IA"] = resp
             st.rerun()
 
-    # --- AÇÕES POR EMPRESA: enviar e-mail direto ou abrir WhatsApp com a mensagem da IA pronta ---
+    # Cards de Envio (Glassmorphism)
     leads_com_analise = [l for l in st.session_state['leads'] if l.get("Análise IA")]
     if leads_com_analise:
-        st.divider()
-        st.subheader("Enviar Propostas")
-        st.caption("E-mail é enviado direto pelo app. WhatsApp abre com a mensagem já preenchida — só falta tocar em Enviar (isso evita bloqueio da tua conta por envio automático em massa).")
-
+        st.markdown("### 📩 Enviar Abordagens")
         for idx, empresa in enumerate(st.session_state['leads']):
-            if not empresa.get("Análise IA"):
-                continue
+            if not empresa.get("Análise IA"): continue
+            
             mensagem = extrair_mensagem_da_analise(empresa["Análise IA"])
-            with st.expander(f"{empresa['Nome']} (Score: {empresa['Score']})"):
+            with st.expander(f"📍 {empresa['Nome']} (Score: {empresa['Score']})"):
                 st.markdown(empresa["Análise IA"])
-                st.text_area("Mensagem que será usada", value=mensagem, key=f"msg_{idx}", height=80)
+                msg_editada = st.text_area("Mensagem de Envio", value=mensagem, key=f"msg_{idx}", height=100)
 
                 colA, colB = st.columns(2)
-
-                # E-mail
-                email_destino = empresa.get("E-mail", "")
+                
+                # E-mail Directo
                 with colA:
-                    if email_destino:
-                        if st.button(f"Enviar E-mail", key=f"email_{idx}", use_container_width=True):
-                            ok, texto_status = enviar_email_gmail(
-                                GMAIL_ENDERECO, GMAIL_APP_PASSWORD, email_destino,
-                                assunto=f"Proposta para {empresa['Nome']}",
-                                corpo=st.session_state.get(f"msg_{idx}", mensagem)
-                            )
-                            st.success(texto_status) if ok else st.error(texto_status)
+                    if empresa.get("E-mail"):
+                        if st.button(f"Enviar por E-mail 📧", key=f"email_{idx}", use_container_width=True):
+                            ok, status = enviar_email_gmail(GMAIL_ENDERECO, GMAIL_APP_PASSWORD, 
+                                                            empresa["E-mail"], f"Proposta para {empresa['Nome']}", msg_editada)
+                            st.success(status) if ok else st.error(status)
                     else:
-                        st.caption("Sem e-mail encontrado")
+                        st.caption("Sem e-mail detetado.")
 
-                # WhatsApp
+                # WhatsApp Directo
                 with colB:
-                    link_wa = gerar_link_whatsapp(empresa.get("Telefone", ""), st.session_state.get(f"msg_{idx}", mensagem))
+                    link_wa = gerar_link_whatsapp(empresa.get("Telefone", ""), msg_editada)
                     if link_wa:
-                        st.link_button("Abrir WhatsApp ↗", link_wa, use_container_width=True)
+                        st.link_button("Abrir WhatsApp 💬", link_wa, use_container_width=True)
                     else:
-                        st.caption("Sem telefone válido")
-
-    st.divider()
-    st.subheader("Exportar Relatórios")
-    df_final = pd.DataFrame(st.session_state['leads'])
-    
-    b1, b2, b3 = st.columns(3)
-    b1.download_button("↓ Excel (CSV)", data=df_final.to_csv(index=False).encode("utf-8"), 
-                       file_name="leads.csv", mime="text/csv", use_container_width=True)
-    b2.download_button("↓ Documento Word", data=criar_word(st.session_state['leads'], st.session_state['n'], st.session_state['r']), 
-                       file_name="leads.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
-    b3.download_button("↓ Relatório PDF", data=criar_pdf(st.session_state['leads'], st.session_state['n'], st.session_state['r']), 
-                       file_name="leads.pdf", mime="application/pdf", use_container_width=True)
+                        st.caption("Sem telefone válido.")
