@@ -30,9 +30,11 @@ from reportlab.lib.styles import getSampleStyleSheet
 try:
     RAPIDAPI_KEY = st.secrets.get("RAPIDAPI_KEY", os.getenv("RAPIDAPI_KEY", ""))
     OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", os.getenv("OPENROUTER_API_KEY", ""))
+    GOOGLE_PLACES_API_KEY = st.secrets.get("GOOGLE_PLACES_API_KEY", os.getenv("GOOGLE_PLACES_API_KEY", ""))
 except Exception:
     RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "")
     OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+    GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
 
 SEARCH_URL = "https://local-business-data.p.rapidapi.com/search"
 # URL CORRETO DO OPENROUTER
@@ -49,7 +51,7 @@ except Exception:
     SUPABASE_URL = os.getenv("SUPABASE_URL", "")
     SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 
-LIMITE_DIARIO_PADRAO = 10  # aplicado a clientes novos; ajustável depois direto na tabela "clientes" no Supabase
+LIMITE_DIARIO_PADRAO = 5  # plano grátis. Quando o cliente pagar, sobe manualmente pra 20 na tabela "clientes" do Supabase
 
 # E-mails que não têm limite diário (o dono do negócio, por exemplo)
 EMAILS_ADMIN = ["mazinguireshelton@gmail.com"]
@@ -275,7 +277,7 @@ def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key):
 
     return erro_final or "Erro: nenhum modelo grátis disponível no momento."
 
-# --- MOTOR DE BUSCA RAPIDAPI ---
+# --- MOTOR DE BUSCA RAPIDAPI (pago, ~$1,25-2,50 por 1000) ---
 def buscar_lugares(query, api_key, limit, nicho, regiao, progress=None):
     headers = {"x-rapidapi-key": api_key, "x-rapidapi-host": "local-business-data.p.rapidapi.com"}
     params = {"query": query, "limit": str(limit), "language": "pt"}
@@ -303,13 +305,129 @@ def buscar_lugares(query, api_key, limit, nicho, regiao, progress=None):
                 "Telefone": tel,
                 "E-mail": extrair_email_do_site(site),
                 "Site": site,
-                "Avaliação": str(aval)
+                "Avaliação": str(aval),
+                "Fonte": "RapidAPI"
             })
-            if progress: progress(len(resultados), limit, "A extrair dados...")
+            if progress: progress(len(resultados), limit, "A extrair dados (RapidAPI)...")
                 
-        return sorted(resultados, key=lambda x: x["Score"], reverse=True)
+        return resultados
     except Exception:
         return []
+
+# --- MOTOR DE BUSCA OPENSTREETMAP (100% grátis, sem limite) ---
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+OSM_HEADERS = {"User-Agent": "scraper-leads-app/1.0"}
+
+def buscar_lugares_osm(nicho, regiao, limit, progress=None):
+    try:
+        geo = requests.get(NOMINATIM_URL, params={"q": regiao, "format": "json", "limit": 1}, headers=OSM_HEADERS, timeout=15).json()
+        if not geo: return []
+        lat, lon = float(geo[0]["lat"]), float(geo[0]["lon"])
+
+        query = f"""
+        [out:json][timeout:25];
+        (
+          node["name"~"{nicho}",i](around:20000,{lat},{lon});
+          node["shop"](around:20000,{lat},{lon})["name"~"{nicho}",i];
+          node["amenity"](around:20000,{lat},{lon})["name"~"{nicho}",i];
+        );
+        out body {limit * 2};
+        """
+        resp = requests.post(OVERPASS_URL, data={"data": query}, headers=OSM_HEADERS, timeout=30)
+        if resp.status_code != 200: return []
+
+        resultados = []
+        vistos = set()
+        for el in resp.json().get("elements", []):
+            if len(resultados) >= limit: break
+            tags = el.get("tags", {})
+            nome = tags.get("name")
+            if not nome or nome in vistos: continue
+            vistos.add(nome)
+
+            tel = tags.get("phone", tags.get("contact:phone", ""))
+            site = tags.get("website", tags.get("contact:website", ""))
+            score = calcular_score_oportunidade(site, "", 0, tel)
+
+            resultados.append({
+                "Score": score,
+                "Nome": nome,
+                "Telefone": tel,
+                "E-mail": extrair_email_do_site(site) if site else "",
+                "Site": site,
+                "Avaliação": "",
+                "Fonte": "OpenStreetMap"
+            })
+            if progress: progress(len(resultados), limit, "A buscar (OpenStreetMap, grátis)...")
+
+        return resultados
+    except Exception:
+        return []
+
+# --- MOTOR DE BUSCA GOOGLE PLACES DIRETO (pago, ~$32-40 por 1000 - último recurso) ---
+def buscar_lugares_google(nicho, regiao, limit, google_api_key, progress=None):
+    if not google_api_key: return []
+    try:
+        url = "https://places.googleapis.com/v1/places:searchText"
+        headers = {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": google_api_key,
+            "X-Goog-FieldMask": "places.displayName,places.nationalPhoneNumber,places.websiteUri,places.rating"
+        }
+        body = {"textQuery": f"{nicho} em {regiao}", "maxResultCount": min(limit, 20)}
+        res = requests.post(url, headers=headers, json=body, timeout=15)
+        if res.status_code != 200: return []
+
+        resultados = []
+        for lugar in res.json().get("places", [])[:limit]:
+            nome = lugar.get("displayName", {}).get("text", "N/A")
+            tel = lugar.get("nationalPhoneNumber", "")
+            site = lugar.get("websiteUri", "")
+            aval = lugar.get("rating", "")
+            score = calcular_score_oportunidade(site, aval, 0, tel)
+
+            resultados.append({
+                "Score": score,
+                "Nome": nome,
+                "Telefone": tel,
+                "E-mail": extrair_email_do_site(site) if site else "",
+                "Site": site,
+                "Avaliação": str(aval),
+                "Fonte": "Google Places"
+            })
+            if progress: progress(len(resultados), limit, "A buscar (Google Places, pago)...")
+
+        return resultados
+    except Exception:
+        return []
+
+# --- CASCATA: usa a fonte grátis primeiro, só paga pelo que faltar ---
+def buscar_leads_cascata(nicho, regiao, limit, rapidapi_key, google_api_key="", progress=None):
+    """
+    Ordem: 1) OpenStreetMap (grátis) -> 2) RapidAPI (barato) -> 3) Google Places (caro, só se ainda faltar).
+    Cada camada só busca o que falta pra completar o 'limit', minimizando gasto.
+    """
+    resultados = buscar_lugares_osm(nicho, regiao, limit, progress)
+    vistos = {r["Nome"].lower() for r in resultados}
+
+    faltam = limit - len(resultados)
+    if faltam > 0 and rapidapi_key:
+        extras = buscar_lugares(f"{nicho} em {regiao}", rapidapi_key, faltam, nicho, regiao, progress)
+        for r in extras:
+            if r["Nome"].lower() not in vistos:
+                resultados.append(r)
+                vistos.add(r["Nome"].lower())
+
+    faltam = limit - len(resultados)
+    if faltam > 0 and google_api_key:
+        extras = buscar_lugares_google(nicho, regiao, faltam, google_api_key, progress)
+        for r in extras:
+            if r["Nome"].lower() not in vistos:
+                resultados.append(r)
+                vistos.add(r["Nome"].lower())
+
+    return sorted(resultados, key=lambda x: x["Score"], reverse=True)
 
 # --- EXPORTAÇÃO: WORD E PDF ---
 def criar_word(dados, nicho, regiao):
@@ -395,8 +513,8 @@ if st.button("🔍 Iniciar Varredura do Mercado", type="primary", use_container_
         else:
             st.info(f"✅ {msg_uso}")
             bar = st.progress(0, "A preparar...")
-            with st.spinner("A rastrear empresas..."):
-                resultados = buscar_lugares(f"{nicho} em {regiao}", RAPIDAPI_KEY, max_leads, nicho, regiao,
+            with st.spinner("A rastrear empresas (grátis primeiro, pago só se faltar)..."):
+                resultados = buscar_leads_cascata(nicho, regiao, max_leads, RAPIDAPI_KEY, GOOGLE_PLACES_API_KEY,
                                           lambda c, t, msg: bar.progress(min(c/t, 1.0), msg))
                 if resultados:
                     st.session_state.update({'leads': resultados, 'n': nicho, 'r': regiao, 'obj': objetivo})
