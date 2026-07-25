@@ -105,7 +105,7 @@ def tela_login():
                 st.session_state["nome_cliente"] = email
                 st.rerun()
             except Exception as e:
-                st.error("E-mail ou senha inválidos, ou o e-mail ainda não foi confirmado.")
+                st.error(f"Erro real (temporário, pra diagnóstico): {e}")
 
     with aba_criar:
         novo_email = st.text_input("E-mail", key="cad_email")
@@ -451,4 +451,3 @@ if 'leads' in st.session_state:
                        file_name="leads.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
     b3.download_button("📕 Relatório PDF", data=criar_pdf(st.session_state['leads'], st.session_state['n'], st.session_state['r']), 
                        file_name="leads.pdf", mime="application/pdf", use_container_width=True)
-        
