@@ -341,7 +341,7 @@ def calcular_score_oportunidade(site, avaliacao, num_avaliacoes, telefone):
     return score
 
 # --- INTEGRAÇÃO IA ---
-def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key):
+def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key, remetente_nome="Um consultor"):
     if not api_key: return "Erro: Chave API OpenRouter necessária."
 
     headers = {
@@ -354,9 +354,10 @@ def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key):
     prompt = f"""
     Objetivo: '{objetivo}'.
     Empresa: {nome} (Nicho: {nicho}). Website: {'Sim' if site else 'Não'}. Avaliação: {avaliacao}.
+    Quem está a enviar a mensagem se chama: {remetente_nome}.
     Retorna APENAS:
     1. DIAGNÓSTICO: (1 frase curta)
-    2. MENSAGEM: (1 mensagem persuasiva de WhatsApp para abordagem)
+    2. MENSAGEM: (1 mensagem persuasiva de WhatsApp para abordagem, assinada com o nome "{remetente_nome}" no lugar de qualquer placeholder tipo "[Seu Nome]")
     """
 
     for modelo in ["openrouter/free", "meta-llama/llama-3.3-70b-instruct:free"]:
@@ -558,7 +559,7 @@ st.markdown("<hr style='border-color: rgba(255,255,255,0.08); margin: 1rem 0;'>"
 col1, col2, col3 = st.columns([2, 2, 1])
 nicho = col1.text_input("Nicho / Setor", placeholder="Ex: Clínicas, Restaurantes")
 regiao = col2.text_input("Região", placeholder="Ex: Maputo, Lisboa")
-max_leads = col3.number_input("Qtd. Máxima", min_value=5, max_value=50, value=10)
+max_leads = col3.number_input("Qtd. Máxima", min_value=1, max_value=50, value=10)
 
 objetivo = st.text_input("Objetivo Comercial", placeholder="Ex: Vender gestão de redes sociais e websites")
 
@@ -594,7 +595,8 @@ if 'leads' in st.session_state:
             for i in range(qtd):
                 empresa = st.session_state['leads'][i]
                 resp = analisar_com_ia(empresa["Nome"], st.session_state['n'], empresa["Site"], 
-                                     empresa["Avaliação"], st.session_state['obj'], OPENROUTER_API_KEY)
+                                     empresa["Avaliação"], st.session_state['obj'], OPENROUTER_API_KEY,
+                                     remetente_nome=st.session_state.get('nome_cliente', 'Um consultor'))
                 st.session_state['leads'][i]["Análise IA"] = resp
             st.rerun()
 
