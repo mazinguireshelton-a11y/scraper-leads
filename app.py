@@ -142,15 +142,89 @@ def tela_login():
 if "autenticado" not in st.session_state:
     tela_login()
 
-# --- ESTILO VISUAL (CSS) ---
+# --- ESTILO VISUAL: "RADAR" (varredura de mercado) ---
 st.markdown("""
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
-    .main {background-color: #f8f9fa;}
-    h1 {color: #1e3a8a; font-family: 'Helvetica Neue', sans-serif;}
-    .stButton>button {
-        background-color: #2563eb; color: white; border-radius: 8px; font-weight: bold; transition: 0.3s;
+    :root {
+        --bg: #111417;
+        --bg-elevado: #181c20;
+        --texto: #E4E7EA;
+        --texto-fraco: #8A9096;
+        --sinal: #3DDC84;
+        --sinal-fraco: rgba(61, 220, 132, 0.15);
+        --borda: #262b30;
     }
-    .stButton>button:hover {background-color: #1d4ed8; border-color: #1d4ed8;}
+
+    .stApp { background-color: var(--bg); color: var(--texto); }
+
+    h1, h2, h3, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
+        font-family: 'Space Grotesk', sans-serif !important;
+        color: var(--texto) !important;
+        letter-spacing: -0.02em;
+    }
+    p, span, label, .stMarkdown, .stCaption { font-family: 'Space Grotesk', sans-serif !important; }
+
+    /* Dados/tabelas em monospace - reforça a leitura "técnica" */
+    .stDataFrame, .stDataFrame * , [data-testid="stMetricValue"] {
+        font-family: 'JetBrains Mono', monospace !important;
+    }
+
+    /* Inputs */
+    .stTextInput input, .stTextArea textarea, .stNumberInput input {
+        background-color: var(--bg-elevado) !important;
+        color: var(--texto) !important;
+        border: 1px solid var(--borda) !important;
+        font-family: 'JetBrains Mono', monospace !important;
+    }
+
+    /* Botão principal com efeito de "varredura" no hover */
+    .stButton>button {
+        background-color: var(--bg-elevado);
+        color: var(--sinal);
+        border: 1px solid var(--sinal);
+        border-radius: 4px;
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        font-size: 0.85rem;
+        position: relative;
+        overflow: hidden;
+        transition: color 0.3s, box-shadow 0.3s;
+    }
+    .stButton>button::before {
+        content: '';
+        position: absolute;
+        top: 0; left: -100%;
+        width: 100%; height: 100%;
+        background: linear-gradient(90deg, transparent, var(--sinal-fraco), transparent);
+        transition: left 0.6s ease;
+    }
+    .stButton>button:hover {
+        color: #ffffff;
+        box-shadow: 0 0 12px var(--sinal-fraco);
+        border-color: var(--sinal);
+    }
+    .stButton>button:hover::before { left: 100%; }
+
+    /* Cards/expanders */
+    .streamlit-expanderHeader {
+        background-color: var(--bg-elevado) !important;
+        color: var(--texto) !important;
+        border: 1px solid var(--borda) !important;
+        font-family: 'Space Grotesk', sans-serif !important;
+    }
+
+    /* Sidebar */
+    section[data-testid="stSidebar"] {
+        background-color: var(--bg-elevado);
+        border-right: 1px solid var(--borda);
+    }
+
+    /* Divisores mais discretos */
+    hr { border-color: var(--borda) !important; }
     </style>
 """, unsafe_allow_html=True)
 
