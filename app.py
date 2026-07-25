@@ -203,18 +203,19 @@ def buscar_apelido(user_id, email):
         return resp.data[0]["apelido"]
     return email.split("@")[0]
 
-def buscar_perfil_oferta(user_id):
+def buscar_perfil_completo(user_id):
     sb = get_supabase()
-    if not sb: return ""
-    resp = sb.table("clientes").select("perfil_oferta").eq("id", user_id).execute()
-    if resp.data and resp.data[0].get("perfil_oferta"):
-        return resp.data[0]["perfil_oferta"]
-    return ""
+    if not sb: return {"apelido": "", "empresa": "", "perfil_oferta": ""}
+    resp = sb.table("clientes").select("apelido, empresa, perfil_oferta").eq("id", user_id).execute()
+    if resp.data:
+        d = resp.data[0]
+        return {"apelido": d.get("apelido") or "", "empresa": d.get("empresa") or "", "perfil_oferta": d.get("perfil_oferta") or ""}
+    return {"apelido": "", "empresa": "", "perfil_oferta": ""}
 
-def salvar_perfil_oferta(user_id, texto):
+def salvar_perfil_completo(user_id, apelido, empresa, perfil_oferta):
     sb = get_supabase()
     if not sb: return
-    sb.table("clientes").update({"perfil_oferta": texto}).eq("id", user_id).execute()
+    sb.table("clientes").update({"apelido": apelido, "empresa": empresa, "perfil_oferta": perfil_oferta}).eq("id", user_id).execute()
 
 def verificar_e_registrar_uso(user_id, email=""):
     if email in EMAILS_ADMIN:
@@ -554,33 +555,55 @@ with c_title:
     st.caption("Encontra clientes e gera abordagens personalizadas com IA.")
 
 with c_user:
-    st.write(f"👤 **{st.session_state.get('nome_cliente', 'Utilizador')}**")
+    if st.button(f"👤 {st.session_state.get('nome_cliente', 'Utilizador')}", key="btn_abrir_perfil", use_container_width=True):
+        st.session_state["vista"] = "perfil"
+        st.rerun()
     if st.button("Sair", key="btn_logout"):
         st.session_state.clear()
         st.rerun()
 
-# Sidebar de Configurações do Gmail + Perfil de Negócio
+# --- PÁGINA DE PERFIL ---
+if st.session_state.get("vista") == "perfil":
+    st.markdown("## Perfil Profissional")
+    st.caption("Estes dados são usados pela IA para personalizar as tuas propostas automaticamente.")
+
+    if "perfil_carregado" not in st.session_state:
+        dados_perfil = buscar_perfil_completo(st.session_state.get("chave_cliente", ""))
+        st.session_state["perfil_apelido"] = dados_perfil["apelido"]
+        st.session_state["perfil_empresa"] = dados_perfil["empresa"]
+        st.session_state["perfil_oferta"] = dados_perfil["perfil_oferta"]
+        st.session_state["perfil_carregado"] = True
+
+    novo_apelido = st.text_input("Nome para usar nas propostas", value=st.session_state["perfil_apelido"],
+                                  placeholder="Ex: João Manuel")
+    nova_empresa = st.text_input("Onde trabalhas / nome da tua empresa", value=st.session_state["perfil_empresa"],
+                                  placeholder="Ex: JM Marketing Digital")
+    nova_oferta = st.text_area("O que fazes / que serviço ofereces", value=st.session_state["perfil_oferta"],
+                                placeholder="Ex: Faço gestão de redes sociais e criação de sites para pequenos negócios.",
+                                height=100)
+
+    col_salvar, col_voltar = st.columns(2)
+    with col_salvar:
+        if st.button("Guardar perfil", type="primary", use_container_width=True):
+            salvar_perfil_completo(st.session_state.get("chave_cliente", ""), novo_apelido, nova_empresa, nova_oferta)
+            st.session_state["perfil_apelido"] = novo_apelido
+            st.session_state["perfil_empresa"] = nova_empresa
+            st.session_state["perfil_oferta"] = nova_oferta
+            st.session_state["nome_cliente"] = novo_apelido or st.session_state.get("nome_cliente")
+            st.success("Perfil guardado!")
+    with col_voltar:
+        if st.button("← Voltar à busca", use_container_width=True):
+            st.session_state["vista"] = "busca"
+            st.rerun()
+
+    st.stop()  # não mostra o resto da página enquanto estiver na vista de perfil
+
+# Sidebar de Configurações do Gmail
 with st.sidebar:
     st.subheader("⚙️ Configurações de Envio")
     GMAIL_ENDERECO = st.text_input("O teu Gmail", placeholder="exemplo@gmail.com")
     GMAIL_APP_PASSWORD = st.text_input("Senha de App do Gmail", type="password", help="Gera nas configurações de Segurança da Google (Senhas de App).")
     st.caption("Credenciais mantidas de forma temporária nesta sessão.")
-
-    st.divider()
-    st.subheader("👤 Meu Perfil / Oferta")
-    if "perfil_oferta" not in st.session_state:
-        st.session_state["perfil_oferta"] = buscar_perfil_oferta(st.session_state.get("chave_cliente", ""))
-
-    perfil_texto = st.text_area(
-        "O que fazes / que serviço ofereces",
-        value=st.session_state["perfil_oferta"],
-        placeholder="Ex: Faço gestão de redes sociais e criação de sites para pequenos negócios.",
-        height=100
-    )
-    if st.button("Guardar perfil", use_container_width=True):
-        salvar_perfil_oferta(st.session_state.get("chave_cliente", ""), perfil_texto)
-        st.session_state["perfil_oferta"] = perfil_texto
-        st.success("Perfil guardado!")
 
 st.markdown("<hr style='border-color: rgba(255,255,255,0.08); margin: 1rem 0;'>", unsafe_allow_html=True)
 
