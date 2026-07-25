@@ -203,6 +203,19 @@ def buscar_apelido(user_id, email):
         return resp.data[0]["apelido"]
     return email.split("@")[0]
 
+def buscar_perfil_oferta(user_id):
+    sb = get_supabase()
+    if not sb: return ""
+    resp = sb.table("clientes").select("perfil_oferta").eq("id", user_id).execute()
+    if resp.data and resp.data[0].get("perfil_oferta"):
+        return resp.data[0]["perfil_oferta"]
+    return ""
+
+def salvar_perfil_oferta(user_id, texto):
+    sb = get_supabase()
+    if not sb: return
+    sb.table("clientes").update({"perfil_oferta": texto}).eq("id", user_id).execute()
+
 def verificar_e_registrar_uso(user_id, email=""):
     if email in EMAILS_ADMIN:
         return True, "Acesso Administrador ativado."
@@ -546,12 +559,28 @@ with c_user:
         st.session_state.clear()
         st.rerun()
 
-# Sidebar de Configurações do Gmail
+# Sidebar de Configurações do Gmail + Perfil de Negócio
 with st.sidebar:
     st.subheader("⚙️ Configurações de Envio")
     GMAIL_ENDERECO = st.text_input("O teu Gmail", placeholder="exemplo@gmail.com")
     GMAIL_APP_PASSWORD = st.text_input("Senha de App do Gmail", type="password", help="Gera nas configurações de Segurança da Google (Senhas de App).")
     st.caption("Credenciais mantidas de forma temporária nesta sessão.")
+
+    st.divider()
+    st.subheader("👤 Meu Perfil / Oferta")
+    if "perfil_oferta" not in st.session_state:
+        st.session_state["perfil_oferta"] = buscar_perfil_oferta(st.session_state.get("chave_cliente", ""))
+
+    perfil_texto = st.text_area(
+        "O que fazes / que serviço ofereces",
+        value=st.session_state["perfil_oferta"],
+        placeholder="Ex: Faço gestão de redes sociais e criação de sites para pequenos negócios.",
+        height=100
+    )
+    if st.button("Guardar perfil", use_container_width=True):
+        salvar_perfil_oferta(st.session_state.get("chave_cliente", ""), perfil_texto)
+        st.session_state["perfil_oferta"] = perfil_texto
+        st.success("Perfil guardado!")
 
 st.markdown("<hr style='border-color: rgba(255,255,255,0.08); margin: 1rem 0;'>", unsafe_allow_html=True)
 
@@ -561,7 +590,19 @@ nicho = col1.text_input("Nicho / Setor", placeholder="Ex: Clínicas, Restaurante
 regiao = col2.text_input("Região", placeholder="Ex: Maputo, Lisboa")
 max_leads = col3.number_input("Qtd. Máxima", min_value=1, max_value=50, value=10)
 
-objetivo = st.text_input("Objetivo Comercial", placeholder="Ex: Vender gestão de redes sociais e websites")
+tem_perfil = bool(st.session_state.get("perfil_oferta", "").strip())
+if tem_perfil:
+    usar_perfil = st.checkbox(
+        f"Usar o meu perfil guardado como objetivo: \"{st.session_state['perfil_oferta'][:80]}{'...' if len(st.session_state['perfil_oferta']) > 80 else ''}\"",
+        value=True
+    )
+else:
+    usar_perfil = False
+
+if usar_perfil:
+    objetivo = st.session_state["perfil_oferta"]
+else:
+    objetivo = st.text_input("Objetivo Comercial", placeholder="Ex: Vender gestão de redes sociais e websites")
 
 if st.button("Iniciar Varredura 🚀", type="primary", use_container_width=True):
     if not nicho or not regiao:
