@@ -144,92 +144,103 @@ if "autenticado" not in st.session_state:
 
 # --- ESTILO VISUAL: CORPORATIVO MINIMALISTA ---
 st.markdown("""
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <style>
-    :root {
-        --bg: #0E1117;
-        --bg-elevado: #161A22;
-        --texto: #E6EDF3;
-        --texto-fraco: #7D8590;
-        --destaque: #2F81F7;
-        --borda: #30363D;
-    }
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 
-    .stApp { background-color: var(--bg); color: var(--texto); }
+:root {
+    --bg: #0E1117;
+    --bg-elevado: #161A22;
+    --texto: #E6EDF3;
+    --texto-fraco: #7D8590;
+    --destaque: #2F81F7;
+    --borda: #30363D;
+}
 
-    h1, h2, h3, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
-        font-family: 'Inter', sans-serif !important;
-        color: var(--texto) !important;
-        font-weight: 600;
-        letter-spacing: -0.01em;
-    }
-    p, span, label, .stMarkdown, .stCaption { font-family: 'Inter', sans-serif !important; }
+.stApp { background-color: var(--bg); color: var(--texto); }
 
-    .stDataFrame, .stDataFrame * , [data-testid="stMetricValue"] {
-        font-family: 'JetBrains Mono', monospace !important;
-    }
+h1, h2, h3, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
+    font-family: 'Inter', sans-serif !important;
+    color: var(--texto) !important;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
 
-    .stTextInput input, .stTextArea textarea, .stNumberInput input {
-        background-color: var(--bg) !important;
-        color: var(--texto) !important;
-        border: 1px solid var(--borda) !important;
-        border-radius: 6px !important;
-        font-family: 'Inter', sans-serif !important;
-        transition: border-color 0.2s ease;
-    }
-    .stTextInput input:focus, .stTextArea textarea:focus {
-        border-color: var(--destaque) !important;
-        box-shadow: none !important;
-    }
+p, span, label, .stMarkdown, .stCaption { 
+    font-family: 'Inter', sans-serif !important; 
+}
 
-    .stButton>button {
-        background-color: var(--bg-elevado);
-        color: var(--texto);
-        border: 1px solid var(--borda);
-        border-radius: 6px;
-        font-family: 'Inter', sans-serif;
-        font-weight: 500;
-        font-size: 0.9rem;
-        transition: all 0.2s ease-in-out;
-    }
-    .stButton>button:hover {
-        border-color: var(--destaque);
-        color: var(--destaque);
-        background-color: transparent;
-    }
-    .stButton>button[kind="primary"] {
-        background-color: var(--destaque);
-        color: #ffffff;
-        border: none;
-    }
-    .stButton>button[kind="primary"]:hover {
-        opacity: 0.85;
-        color: #ffffff;
-        background-color: var(--destaque);
-    }
+.stDataFrame, .stDataFrame * , [data-testid="stMetricValue"] {
+    font-family: 'JetBrains Mono', monospace !important;
+}
 
-    .streamlit-expanderHeader {
-        background-color: var(--bg-elevado) !important;
-        color: var(--texto) !important;
-        border-bottom: 1px solid var(--borda) !important;
-        font-family: 'Inter', sans-serif !important;
-        border-radius: 6px 6px 0 0;
-    }
-    div[data-testid="stExpander"] {
-        border: 1px solid var(--borda) !important;
-        border-radius: 6px !important;
-        background-color: var(--bg-elevado);
-    }
+.stTextInput input, .stTextArea textarea, .stNumberInput input {
+    background-color: var(--bg) !important;
+    color: var(--texto) !important;
+    border: 1px solid var(--borda) !important;
+    border-radius: 6px !important;
+    font-family: 'Inter', sans-serif !important;
+    transition: border-color 0.2s ease;
+}
 
-    section[data-testid="stSidebar"] {
-        background-color: var(--bg-elevado);
-        border-right: 1px solid var(--borda);
-    }
+.stTextInput input:focus, .stTextArea textarea:focus {
+    border-color: var(--destaque) !important;
+    box-shadow: none !important;
+}
 
-    hr { border-color: var(--borda) !important; }
-    </style>
+.stButton>button {
+    background-color: var(--bg-elevado);
+    color: var(--texto);
+    border: 1px solid var(--borda);
+    border-radius: 6px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    font-size: 0.9rem;
+    transition: all 0.2s ease-in-out;
+}
+
+.stButton>button:hover {
+    border-color: var(--destaque);
+    color: var(--destaque);
+    background-color: transparent;
+}
+
+.stButton>button[kind="primary"] {
+    background-color: var(--destaque);
+    color: #ffffff;
+    border: none;
+}
+
+.stButton>button[kind="primary"]:hover {
+    opacity: 0.85;
+    color: #ffffff;
+    background-color: var(--destaque);
+}
+
+.streamlit-expanderHeader {
+    background-color: var(--bg-elevado) !important;
+    color: var(--texto) !important;
+    border-bottom: 1px solid var(--borda) !important;
+    font-family: 'Inter', sans-serif !important;
+    border-radius: 6px 6px 0 0;
+}
+
+div[data-testid="stExpander"] {
+    border: 1px solid var(--borda) !important;
+    border-radius: 6px !important;
+    background-color: var(--bg-elevado);
+}
+
+section[data-testid="stSidebar"] {
+    background-color: var(--bg-elevado);
+    border-right: 1px solid var(--borda);
+}
+
+hr { 
+    border-color: var(--borda) !important; 
+}
+</style>
 """, unsafe_allow_html=True)
+
 
 # --- FUNÇÕES DE LIMPEZA E EXTRAÇÃO ---
 def limpar_para_pdf(texto):
