@@ -12,7 +12,7 @@ from io import BytesIO
 from bs4 import BeautifulSoup
 
 # set_page_config precisa ser o PRIMEIRO comando Streamlit do script
-st.set_page_config(page_title="Prospeção B2B com IA", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="Prospeção B2B com IA", page_icon="💼", layout="wide")
 
 # Tenta carregar o dotenv para testes locais
 try:
@@ -103,7 +103,7 @@ def verificar_e_registrar_uso(user_id, email=""):
     return True, f"{restantes} buscas restantes hoje."
 
 def tela_login():
-    st.title("🔐 Acesso")
+    st.title("Autenticação")
     st.caption("Cria conta ou entra com o teu e-mail e senha.")
 
     aba_entrar, aba_criar = st.tabs(["Entrar", "Criar conta"])
@@ -142,88 +142,91 @@ def tela_login():
 if "autenticado" not in st.session_state:
     tela_login()
 
-# --- ESTILO VISUAL: "RADAR" (varredura de mercado) ---
+# --- ESTILO VISUAL: CORPORATIVO MINIMALISTA ---
 st.markdown("""
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
     :root {
-        --bg: #111417;
-        --bg-elevado: #181c20;
-        --texto: #E4E7EA;
-        --texto-fraco: #8A9096;
-        --sinal: #3DDC84;
-        --sinal-fraco: rgba(61, 220, 132, 0.15);
-        --borda: #262b30;
+        --bg: #0E1117;
+        --bg-elevado: #161A22;
+        --texto: #E6EDF3;
+        --texto-fraco: #7D8590;
+        --destaque: #2F81F7;
+        --borda: #30363D;
     }
 
     .stApp { background-color: var(--bg); color: var(--texto); }
 
     h1, h2, h3, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
-        font-family: 'Space Grotesk', sans-serif !important;
+        font-family: 'Inter', sans-serif !important;
         color: var(--texto) !important;
-        letter-spacing: -0.02em;
+        font-weight: 600;
+        letter-spacing: -0.01em;
     }
-    p, span, label, .stMarkdown, .stCaption { font-family: 'Space Grotesk', sans-serif !important; }
+    p, span, label, .stMarkdown, .stCaption { font-family: 'Inter', sans-serif !important; }
 
-    /* Dados/tabelas em monospace - reforça a leitura "técnica" */
     .stDataFrame, .stDataFrame * , [data-testid="stMetricValue"] {
         font-family: 'JetBrains Mono', monospace !important;
     }
 
-    /* Inputs */
     .stTextInput input, .stTextArea textarea, .stNumberInput input {
-        background-color: var(--bg-elevado) !important;
+        background-color: var(--bg) !important;
         color: var(--texto) !important;
         border: 1px solid var(--borda) !important;
-        font-family: 'JetBrains Mono', monospace !important;
+        border-radius: 6px !important;
+        font-family: 'Inter', sans-serif !important;
+        transition: border-color 0.2s ease;
+    }
+    .stTextInput input:focus, .stTextArea textarea:focus {
+        border-color: var(--destaque) !important;
+        box-shadow: none !important;
     }
 
-    /* Botão principal com efeito de "varredura" no hover */
     .stButton>button {
         background-color: var(--bg-elevado);
-        color: var(--sinal);
-        border: 1px solid var(--sinal);
-        border-radius: 4px;
-        font-family: 'Space Grotesk', sans-serif;
-        font-weight: 700;
-        letter-spacing: 0.03em;
-        text-transform: uppercase;
-        font-size: 0.85rem;
-        position: relative;
-        overflow: hidden;
-        transition: color 0.3s, box-shadow 0.3s;
-    }
-    .stButton>button::before {
-        content: '';
-        position: absolute;
-        top: 0; left: -100%;
-        width: 100%; height: 100%;
-        background: linear-gradient(90deg, transparent, var(--sinal-fraco), transparent);
-        transition: left 0.6s ease;
+        color: var(--texto);
+        border: 1px solid var(--borda);
+        border-radius: 6px;
+        font-family: 'Inter', sans-serif;
+        font-weight: 500;
+        font-size: 0.9rem;
+        transition: all 0.2s ease-in-out;
     }
     .stButton>button:hover {
-        color: #ffffff;
-        box-shadow: 0 0 12px var(--sinal-fraco);
-        border-color: var(--sinal);
+        border-color: var(--destaque);
+        color: var(--destaque);
+        background-color: transparent;
     }
-    .stButton>button:hover::before { left: 100%; }
+    .stButton>button[kind="primary"] {
+        background-color: var(--destaque);
+        color: #ffffff;
+        border: none;
+    }
+    .stButton>button[kind="primary"]:hover {
+        opacity: 0.85;
+        color: #ffffff;
+        background-color: var(--destaque);
+    }
 
-    /* Cards/expanders */
     .streamlit-expanderHeader {
         background-color: var(--bg-elevado) !important;
         color: var(--texto) !important;
+        border-bottom: 1px solid var(--borda) !important;
+        font-family: 'Inter', sans-serif !important;
+        border-radius: 6px 6px 0 0;
+    }
+    div[data-testid="stExpander"] {
         border: 1px solid var(--borda) !important;
-        font-family: 'Space Grotesk', sans-serif !important;
+        border-radius: 6px !important;
+        background-color: var(--bg-elevado);
     }
 
-    /* Sidebar */
     section[data-testid="stSidebar"] {
         background-color: var(--bg-elevado);
         border-right: 1px solid var(--borda);
     }
 
-    /* Divisores mais discretos */
     hr { border-color: var(--borda) !important; }
     </style>
 """, unsafe_allow_html=True)
@@ -543,9 +546,9 @@ def criar_pdf(dados, nicho, regiao):
 # ---------- INTERFACE PRINCIPAL ----------
 col_titulo, col_user = st.columns([4, 1])
 with col_titulo:
-    st.title("🚀 Plataforma de Prospeção Inteligente")
+    st.title("Plataforma de Prospeção Inteligente")
 with col_user:
-    st.caption(f"👤 {st.session_state.get('nome_cliente', '')}")
+    st.caption(f"{st.session_state.get('nome_cliente', '')}")
     if st.button("Sair"):
         st.session_state.clear()
         st.rerun()
@@ -561,7 +564,7 @@ if not RAPIDAPI_KEY or not OPENROUTER_API_KEY:
 
 with st.sidebar:
     st.divider()
-    st.subheader("📧 Teu Gmail (pra enviar propostas)")
+    st.subheader("Teu Gmail (pra enviar propostas)")
     st.caption("Cada pessoa usa o próprio Gmail — os e-mails saem em teu nome, não do dono do app.")
     GMAIL_ENDERECO = st.text_input("Teu Gmail", placeholder="tuemail@gmail.com")
     GMAIL_APP_PASSWORD = st.text_input("Senha de App do teu Gmail", type="password",
@@ -571,13 +574,13 @@ with st.sidebar:
 st.divider()
 
 col1, col2, col3 = st.columns([2, 2, 1])
-nicho = col1.text_input("🏢 Nicho / Setor", placeholder="Ex: Clínicas, Restaurantes")
-regiao = col2.text_input("📍 Região", placeholder="Ex: Maputo, Lisboa")
-max_leads = col3.number_input("📊 Qtd.", min_value=5, max_value=50, value=10)
+nicho = col1.text_input("Nicho / Setor", placeholder="Ex: Clínicas, Restaurantes")
+regiao = col2.text_input("Região", placeholder="Ex: Maputo, Lisboa")
+max_leads = col3.number_input("Quantidade máxima", min_value=5, max_value=50, value=10)
 
-objetivo = st.text_input("🎯 Objetivo Comercial", placeholder="Ex: Quero vender serviços de marketing digital")
+objetivo = st.text_input("Objetivo Comercial", placeholder="Ex: Quero vender serviços de marketing digital")
 
-if st.button("🔍 Iniciar Varredura do Mercado", type="primary", use_container_width=True):
+if st.button("Iniciar Varredura →", type="primary", use_container_width=True):
     if not RAPIDAPI_KEY or not nicho or not regiao:
         st.error("Preenche os campos e as chaves API.")
     else:
@@ -602,7 +605,7 @@ if 'leads' in st.session_state:
     st.markdown("### 🧠 Modo Premium: Abordagem IA (Gratuita)")
     qtd = st.slider("Analisar quantas empresas?", 1, len(df), min(3, len(df)))
     
-    if st.button("✨ Gerar Estratégias com IA", type="primary"):
+    if st.button("Gerar Estratégias com IA", type="primary"):
         with st.spinner("A IA está a redigir as mensagens..."):
             for i in range(qtd):
                 empresa = st.session_state['leads'][i]
@@ -615,7 +618,7 @@ if 'leads' in st.session_state:
     leads_com_analise = [l for l in st.session_state['leads'] if l.get("Análise IA")]
     if leads_com_analise:
         st.divider()
-        st.subheader("📤 Enviar Propostas")
+        st.subheader("Enviar Propostas")
         st.caption("E-mail é enviado direto pelo app. WhatsApp abre com a mensagem já preenchida — só falta tocar em Enviar (isso evita bloqueio da tua conta por envio automático em massa).")
 
         for idx, empresa in enumerate(st.session_state['leads']):
@@ -632,7 +635,7 @@ if 'leads' in st.session_state:
                 email_destino = empresa.get("E-mail", "")
                 with colA:
                     if email_destino:
-                        if st.button(f"📧 Enviar E-mail", key=f"email_{idx}", use_container_width=True):
+                        if st.button(f"Enviar E-mail", key=f"email_{idx}", use_container_width=True):
                             ok, texto_status = enviar_email_gmail(
                                 GMAIL_ENDERECO, GMAIL_APP_PASSWORD, email_destino,
                                 assunto=f"Proposta para {empresa['Nome']}",
@@ -646,18 +649,18 @@ if 'leads' in st.session_state:
                 with colB:
                     link_wa = gerar_link_whatsapp(empresa.get("Telefone", ""), st.session_state.get(f"msg_{idx}", mensagem))
                     if link_wa:
-                        st.link_button("💬 Abrir WhatsApp", link_wa, use_container_width=True)
+                        st.link_button("Abrir WhatsApp ↗", link_wa, use_container_width=True)
                     else:
                         st.caption("Sem telefone válido")
 
     st.divider()
-    st.subheader("📥 Exportar Relatórios")
+    st.subheader("Exportar Relatórios")
     df_final = pd.DataFrame(st.session_state['leads'])
     
     b1, b2, b3 = st.columns(3)
-    b1.download_button("📊 Excel (CSV)", data=df_final.to_csv(index=False).encode("utf-8"), 
+    b1.download_button("↓ Excel (CSV)", data=df_final.to_csv(index=False).encode("utf-8"), 
                        file_name="leads.csv", mime="text/csv", use_container_width=True)
-    b2.download_button("📝 Documento Word", data=criar_word(st.session_state['leads'], st.session_state['n'], st.session_state['r']), 
+    b2.download_button("↓ Documento Word", data=criar_word(st.session_state['leads'], st.session_state['n'], st.session_state['r']), 
                        file_name="leads.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
-    b3.download_button("📕 Relatório PDF", data=criar_pdf(st.session_state['leads'], st.session_state['n'], st.session_state['r']), 
+    b3.download_button("↓ Relatório PDF", data=criar_pdf(st.session_state['leads'], st.session_state['n'], st.session_state['r']), 
                        file_name="leads.pdf", mime="application/pdf", use_container_width=True)
