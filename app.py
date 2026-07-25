@@ -370,7 +370,7 @@ def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key):
             continue
     return "Não foi possível gerar análise no momento."
 
-# --- BUSCA EM CASCATA ---
+# --- BUSCA EM CASCATA: OSM (grátis) -> RapidAPI (barato) -> Google (caro, último recurso) ---
 def buscar_lugares_osm(nicho, regiao, limit, progress=None):
     try:
         geo = requests.get("https://nominatim.openstreetmap.org/search", 
@@ -388,7 +388,9 @@ def buscar_lugares_osm(nicho, regiao, limit, progress=None):
         out body {limit * 2};
         """
         resp = requests.post("https://overpass-api.de/api/interpreter", data={"data": query}, timeout=30)
-        if resp.status_code != 200: return []
+        if resp.status_code != 200:
+            st.info(f"OpenStreetMap indisponível (erro {resp.status_code}). Seguindo com outras fontes.")
+            return []
 
         resultados = []
         vistos = set()
@@ -408,10 +410,128 @@ def buscar_lugares_osm(nicho, regiao, limit, progress=None):
                 "E-mail": extrair_email_do_site(site) if site else "",
                 "Site": site, "Avaliação": "N/A", "Fonte": "OpenStreetMap"
             })
-            if progress: progress(len(resultados), limit, "Localizando empresas...")
+            if progress: progress(len(resultados), limit, "A buscar (OpenStreetMap, grátis)...")
         return resultados
     except Exception:
         return []
+
+def buscar_lugares(query, api_key, limit, nicho, regiao, progress=None):
+    """Motor RapidAPI - pago (~$1,25-2,50/1000), usado só pro que faltar depois do OSM."""
+    headers = {"x-rapidapi-key": api_key, "x-rapidapi-host": "local-business-data.p.rapidapi.com"}
+    params = {"query": query, "limit": str(limit), "language": "pt"}
+    try:
+        res = requests.get(SEARCH_URL, headers=headers, params=params, timeout=20)
+        if res.status_code != 200:
+            if res.status_code == 429:
+                st.warning("RapidAPI: limite mensal estourado (erro 429). Seguindo só com fontes grátis.")
+            elif res.status_code in (401, 403):
+                st.warning(f"RapidAPI: chave inválida ou sem permissão (erro {res.status_code}).")
+            else:
+                st.warning(f"RapidAPI retornou erro {res.status_code}.")
+            return []
+
+        dados = res.json().get("data", [])
+        resultados = []
+        for lugar in dados:
+            if len(resultados) >= limit: break
+            nome = lugar.get("name", "N/A")
+            tel = lugar.get("phone_number", "")
+            site = lugar.get("website", "")
+            aval = lugar.get("rating", "")
+            score = calcular_score_oportunidade(site, aval, lugar.get("review_count", 0), tel)
+            resultados.append({
+                "Score": score, "Nome": nome, "Telefone": tel,
+                "E-mail": extrair_email_do_site(site), "Site": site,
+                "Avaliação": str(aval), "Fonte": "RapidAPI"
+            })
+            if progress: progress(len(resultados), limit, "A extrair dados (RapidAPI)...")
+        return resultados
+    except Exception:
+        return []
+
+def buscar_lugares_google(nicho, regiao, limit, google_api_key, progress=None):
+    """Motor Google Places (New) - o mais caro (~$32-40/1000), só entra se as outras 2 não bastarem."""
+    if not google_api_key: return []
+    try:
+        url = "https://places.googleapis.com/v1/places:searchText"
+        headers = {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": google_api_key,
+            "X-Goog-FieldMask": "places.displayName,places.nationalPhoneNumber,places.websiteUri,places.rating"
+        }
+        body = {"textQuery": f"{nicho} em {regiao}", "maxResultCount": min(limit, 20)}
+        res = requests.post(url, headers=headers, json=body, timeout=15)
+        if res.status_code != 200: return []
+
+        resultados = []
+        for lugar in res.json().get("places", [])[:limit]:
+            nome = lugar.get("displayName", {}).get("text", "N/A")
+            tel = lugar.get("nationalPhoneNumber", "")
+            site = lugar.get("websiteUri", "")
+            aval = lugar.get("rating", "")
+            score = calcular_score_oportunidade(site, aval, 0, tel)
+            resultados.append({
+                "Score": score, "Nome": nome, "Telefone": tel,
+                "E-mail": extrair_email_do_site(site) if site else "",
+                "Site": site, "Avaliação": str(aval), "Fonte": "Google Places"
+            })
+            if progress: progress(len(resultados), limit, "A buscar (Google Places, pago)...")
+        return resultados
+    except Exception:
+        return []
+
+def buscar_leads_cascata(nicho, regiao, limit, rapidapi_key, google_api_key="", progress=None):
+    """Ordem: OSM (grátis) -> RapidAPI (barato) -> Google (caro). Cada camada só busca o que falta."""
+    resultados = buscar_lugares_osm(nicho, regiao, limit, progress)
+    vistos = {r["Nome"].lower() for r in resultados}
+
+    faltam = limit - len(resultados)
+    if faltam > 0 and rapidapi_key:
+        extras = buscar_lugares(f"{nicho} em {regiao}", rapidapi_key, faltam, nicho, regiao, progress)
+        for r in extras:
+            if r["Nome"].lower() not in vistos:
+                resultados.append(r); vistos.add(r["Nome"].lower())
+
+    faltam = limit - len(resultados)
+    if faltam > 0 and google_api_key:
+        extras = buscar_lugares_google(nicho, regiao, faltam, google_api_key, progress)
+        for r in extras:
+            if r["Nome"].lower() not in vistos:
+                resultados.append(r); vistos.add(r["Nome"].lower())
+
+    return sorted(resultados, key=lambda x: x["Score"], reverse=True)
+
+# --- EXPORTAÇÃO: WORD E PDF ---
+def criar_word(dados, nicho, regiao):
+    doc = Document()
+    doc.add_heading(f"Relatório de Prospeção: {nicho} em {regiao}", 0)
+    for item in dados:
+        doc.add_heading(item["Nome"], level=2)
+        doc.add_paragraph(f"• Contato: {item['Telefone']} | Email: {item['E-mail']}")
+        doc.add_paragraph(f"• Score Comercial: {item['Score']}")
+        doc.add_paragraph(f"• Análise IA:\n{item.get('Análise IA', 'Não analisado.')}")
+        doc.add_paragraph("-" * 30)
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+def criar_pdf(dados, nicho, regiao):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    styles = getSampleStyleSheet()
+    elementos = [Paragraph(f"Relatório Estratégico: {nicho} em {regiao}", styles['Title']), Spacer(1, 15)]
+    for item in dados:
+        nome = limpar_para_pdf(item['Nome'])
+        elementos.append(Paragraph(f"<b>{nome}</b> (Score: {item['Score']})", styles['Heading2']))
+        elementos.append(Paragraph(f"<b>Telefone:</b> {limpar_para_pdf(item['Telefone'])}", styles['Normal']))
+        elementos.append(Paragraph(f"<b>E-mail:</b> {limpar_para_pdf(item['E-mail'])}", styles['Normal']))
+        analise = limpar_para_pdf(item.get('Análise IA', 'Não gerado.'))
+        elementos.append(Paragraph(f"<b>Análise IA:</b> {analise}", styles['Normal']))
+        elementos.append(Spacer(1, 10))
+    doc.build(elementos)
+    buffer.seek(0)
+    return buffer
 
 # --- INTERFACE PRINCIPAL ---
 c_title, c_user = st.columns([3, 1])
@@ -451,7 +571,8 @@ if st.button("Iniciar Varredura 🚀", type="primary", use_container_width=True)
             st.error(msg_uso)
         else:
             bar = st.progress(0, "Iniciando...")
-            resultados = buscar_lugares_osm(nicho, regiao, max_leads, lambda c, t, m: bar.progress(min(c/t, 1.0), m))
+            resultados = buscar_leads_cascata(nicho, regiao, max_leads, RAPIDAPI_KEY, GOOGLE_PLACES_API_KEY,
+                                              lambda c, t, m: bar.progress(min(c/t, 1.0), m))
             bar.empty()
             if resultados:
                 st.session_state.update({'leads': resultados, 'n': nicho, 'r': regiao, 'obj': objetivo})
@@ -508,3 +629,14 @@ if 'leads' in st.session_state:
                         st.link_button("Abrir WhatsApp 💬", link_wa, use_container_width=True)
                     else:
                         st.caption("Sem telefone válido.")
+
+    st.markdown("---")
+    st.markdown("### 📤 Exportar Relatórios")
+    df_final = pd.DataFrame(st.session_state['leads'])
+    b1, b2, b3 = st.columns(3)
+    b1.download_button("↓ Excel (CSV)", data=df_final.to_csv(index=False).encode("utf-8"),
+                       file_name="leads.csv", mime="text/csv", use_container_width=True)
+    b2.download_button("↓ Documento Word", data=criar_word(st.session_state['leads'], st.session_state['n'], st.session_state['r']),
+                       file_name="leads.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+    b3.download_button("↓ Relatório PDF", data=criar_pdf(st.session_state['leads'], st.session_state['n'], st.session_state['r']),
+                       file_name="leads.pdf", mime="application/pdf", use_container_width=True)
