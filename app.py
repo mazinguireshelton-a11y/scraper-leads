@@ -247,17 +247,9 @@ def verificar_e_registrar_uso(user_id, email=""):
 def tela_login():
     st.markdown("""
     <div style='text-align:center; margin-bottom:2rem; display:flex; justify-content:center;'>
-        <svg width="200" height="56" viewBox="0 0 240 64" xmlns="http://www.w3.org/2000/svg">
-            <g transform="translate(8, 8)">
-                <circle cx="24" cy="24" r="22" fill="none" stroke="#2F81F7" stroke-width="3"/>
-                <circle cx="24" cy="24" r="13" fill="none" stroke="#2F81F7" stroke-width="2.5" opacity="0.7"/>
-                <circle cx="24" cy="24" r="4" fill="#2F81F7"/>
-                <line x1="24" y1="0" x2="24" y2="10" stroke="#2F81F7" stroke-width="3"/>
-                <line x1="24" y1="38" x2="24" y2="48" stroke="#2F81F7" stroke-width="3"/>
-                <line x1="0" y1="24" x2="10" y2="24" stroke="#2F81F7" stroke-width="3"/>
-                <line x1="38" y1="24" x2="48" y2="24" stroke="#2F81F7" stroke-width="3"/>
-            </g>
-            <text x="72" y="42" font-family="Inter, sans-serif" font-size="32" font-weight="600" fill="#E6EDF3">Mira</text>
+        <svg width="140" height="140" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+            <path d="M65 62 L138 88 L102 100 L88 136 Z" fill="#2F81F7"/>
+            <text x="100" y="178" font-family="Inter, sans-serif" font-size="30" font-weight="700" letter-spacing="3" fill="#E6EDF3" text-anchor="middle">MIRA</text>
         </svg>
     </div>
     """, unsafe_allow_html=True)
@@ -601,17 +593,9 @@ def criar_pdf(dados, nicho, regiao):
 c_title, c_user = st.columns([3, 1])
 with c_title:
     st.markdown("""
-    <svg width="180" height="50" viewBox="0 0 240 64" xmlns="http://www.w3.org/2000/svg">
-        <g transform="translate(8, 8)">
-            <circle cx="24" cy="24" r="22" fill="none" stroke="#2F81F7" stroke-width="3"/>
-            <circle cx="24" cy="24" r="13" fill="none" stroke="#2F81F7" stroke-width="2.5" opacity="0.7"/>
-            <circle cx="24" cy="24" r="4" fill="#2F81F7"/>
-            <line x1="24" y1="0" x2="24" y2="10" stroke="#2F81F7" stroke-width="3"/>
-            <line x1="24" y1="38" x2="24" y2="48" stroke="#2F81F7" stroke-width="3"/>
-            <line x1="0" y1="24" x2="10" y2="24" stroke="#2F81F7" stroke-width="3"/>
-            <line x1="38" y1="24" x2="48" y2="24" stroke="#2F81F7" stroke-width="3"/>
-        </g>
-        <text x="72" y="42" font-family="Inter, sans-serif" font-size="32" font-weight="600" fill="#E6EDF3">Mira</text>
+    <svg width="90" height="90" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <path d="M65 62 L138 88 L102 100 L88 136 Z" fill="#2F81F7"/>
+        <text x="100" y="178" font-family="Inter, sans-serif" font-size="30" font-weight="700" letter-spacing="3" fill="#E6EDF3" text-anchor="middle">MIRA</text>
     </svg>
     """, unsafe_allow_html=True)
     st.caption("Encontra os clientes certos, sem perder tempo.")
