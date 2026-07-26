@@ -19,7 +19,7 @@ from supabase import create_client
 
 # 1. Configuração da página (Primeiro comando Streamlit)
 st.set_page_config(
-    page_title="Prospeção B2B Pro", 
+    page_title="Mira", 
     page_icon="⚡", 
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -245,7 +245,7 @@ def verificar_e_registrar_uso(user_id, email=""):
 
 # --- TELA DE AUTENTICAÇÃO ---
 def tela_login():
-    st.markdown("<h2 style='text-align: center; margin-bottom: 2rem;'>⚡ Aceder ao SaaS</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; margin-bottom: 2rem;'>Mira</h2>", unsafe_allow_html=True)
     
     col_centered = st.columns([1, 2, 1])[1] if not st.session_state.get("is_mobile", False) else [st]
     
@@ -585,8 +585,8 @@ def criar_pdf(dados, nicho, regiao):
 # --- INTERFACE PRINCIPAL ---
 c_title, c_user = st.columns([3, 1])
 with c_title:
-    st.markdown("<h1 style='font-size: 1.8rem; margin:0;'>⚡ Prospeção Inteligente B2B</h1>", unsafe_allow_html=True)
-    st.caption("Encontra clientes e gera abordagens personalizadas com IA.")
+    st.markdown("<h1 style='font-size: 1.8rem; margin:0;'>Mira</h1>", unsafe_allow_html=True)
+    st.caption("Encontra os clientes certos, sem perder tempo.")
 
 with c_user:
     if st.button(f"👤 {st.session_state.get('nome_cliente', 'Utilizador')}", key="btn_abrir_perfil", use_container_width=True):
