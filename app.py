@@ -185,13 +185,14 @@ def get_supabase():
         return None
     return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-def garantir_registro_cliente(user_id, email, apelido=None):
+def garantir_registro_cliente(user_id, email, apelido=None, empresa=None, perfil_oferta=None):
     sb = get_supabase()
     if not sb: return
     existente = sb.table("clientes").select("*").eq("id", user_id).execute()
     if not existente.data:
         sb.table("clientes").insert({
             "id": user_id, "email": email, "apelido": apelido or email.split("@")[0],
+            "empresa": empresa or "", "perfil_oferta": perfil_oferta or "",
             "limite_diario": LIMITE_DIARIO_PADRAO
         }).execute()
 
@@ -277,14 +278,17 @@ def tela_login():
 
         with aba_criar:
             novo_email = st.text_input("E-mail", key="cad_email")
-            novo_apelido = st.text_input("Nome / Empresa", key="cad_apelido")
+            novo_apelido = st.text_input("Nome para usar nas propostas", key="cad_apelido", placeholder="Ex: João Manuel")
+            nova_empresa = st.text_input("Onde trabalhas / nome da tua empresa", key="cad_empresa", placeholder="Ex: JM Marketing Digital")
+            nova_oferta = st.text_area("O que fazes / que serviço ofereces", key="cad_oferta",
+                                        placeholder="Ex: Faço gestão de redes sociais e criação de sites.", height=80)
             nova_senha = st.text_input("Senha", type="password", key="cad_senha")
             if st.button("Criar Conta", type="primary", key="btn_criar", use_container_width=True):
                 if sb:
                     try:
                         resp = sb.auth.sign_up({"email": novo_email, "password": nova_senha})
                         if resp.user:
-                            garantir_registro_cliente(resp.user.id, novo_email, novo_apelido)
+                            garantir_registro_cliente(resp.user.id, novo_email, novo_apelido, nova_empresa, nova_oferta)
                         st.success("Conta criada! Confirma o e-mail enviado.")
                     except Exception as e:
                         st.error(f"Erro ao criar conta: {e}")
