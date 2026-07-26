@@ -32,6 +32,22 @@ try:
 except ImportError:
     pass
 
+# --- PONTE JS: o link de recuperação de senha do Supabase manda o token
+# depois do "#" na URL, que o Python NÃO consegue ler diretamente.
+# Este script converte isso em query params normais (depois do "?"),
+# que o Streamlit já lê. Sem isso, o link cai sempre na tela de login.
+import streamlit.components.v1 as components
+components.html("""
+<script>
+if (window.location.hash && window.location.hash.includes('access_token')) {
+    const hash = window.location.hash.substring(1);
+    const params = new URLSearchParams(hash);
+    const newUrl = window.location.pathname + '?' + params.toString();
+    window.location.href = newUrl;
+}
+</script>
+""", height=0)
+
 # --- CONFIGURAÇÃO DE CHAVES DE API ---
 try:
     RAPIDAPI_KEY = st.secrets.get("RAPIDAPI_KEY", os.getenv("RAPIDAPI_KEY", ""))
@@ -321,7 +337,32 @@ def tela_login():
 
     st.stop()
 
+def tela_definir_nova_senha(access_token, refresh_token):
+    st.markdown("<h2 style='text-align:center;'>Definir Nova Senha</h2>", unsafe_allow_html=True)
+    col = st.columns([1, 2, 1])[1]
+    with col:
+        nova = st.text_input("Nova senha (mínimo 6 caracteres)", type="password", key="nova_senha_1")
+        confirmar = st.text_input("Confirma a nova senha", type="password", key="nova_senha_2")
+        if st.button("Guardar nova senha", type="primary", use_container_width=True):
+            if len(nova) < 6:
+                st.error("A senha precisa ter pelo menos 6 caracteres.")
+            elif nova != confirmar:
+                st.error("As senhas não coincidem.")
+            else:
+                sb = get_supabase()
+                try:
+                    sb.auth.set_session(access_token, refresh_token)
+                    sb.auth.update_user({"password": nova})
+                    st.success("Senha atualizada! Podes voltar e fazer login com a nova senha.")
+                    st.query_params.clear()
+                except Exception as e:
+                    st.error(f"Erro ao atualizar a senha: {e}")
+    st.stop()
+
 if "autenticado" not in st.session_state:
+    _qp = st.query_params
+    if _qp.get("type") == "recovery" and _qp.get("access_token"):
+        tela_definir_nova_senha(_qp.get("access_token"), _qp.get("refresh_token"))
     tela_login()
 
 # --- FUNÇÕES DE NEGÓCIO E RASTREIO ---
