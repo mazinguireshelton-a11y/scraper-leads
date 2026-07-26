@@ -697,6 +697,18 @@ if 'leads' in st.session_state:
 
     st.markdown("---")
     st.markdown("### 🧠 Gerar Abordagens com IA")
+
+    tem_perfil = bool(st.session_state.get("perfil_oferta", "").strip())
+    objetivo_digitado = st.text_area(
+        "Objetivo específico para esta busca (opcional)",
+        value="",
+        placeholder=f"Deixa em branco para usar o teu perfil: \"{st.session_state.get('perfil_oferta', '')[:70]}...\"" if tem_perfil else "Ex: Vender gestão de redes sociais",
+        height=70
+    )
+    objetivo_atual = objetivo_digitado.strip() or st.session_state.get("perfil_oferta", "").strip() or st.session_state.get('obj', '')
+    if not objetivo_digitado.strip() and tem_perfil:
+        st.caption("✓ Usando o teu perfil guardado (nenhum objetivo específico digitado acima).")
+
     qtd = st.slider("Quantidade de empresas para analisar:", 1, len(df), min(3, len(df)))
 
     if st.button("Gerar Propostas com IA 🤖", type="primary"):
@@ -704,7 +716,7 @@ if 'leads' in st.session_state:
             for i in range(qtd):
                 empresa = st.session_state['leads'][i]
                 resp = analisar_com_ia(empresa["Nome"], st.session_state['n'], empresa["Site"], 
-                                     empresa["Avaliação"], st.session_state['obj'], OPENROUTER_API_KEY,
+                                     empresa["Avaliação"], objetivo_atual, OPENROUTER_API_KEY,
                                      remetente_nome=st.session_state.get('nome_cliente', 'Um consultor'))
                 st.session_state['leads'][i]["Análise IA"] = resp
             st.rerun()
