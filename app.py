@@ -246,17 +246,19 @@ def verificar_e_registrar_uso(user_id, email=""):
 # --- TELA DE AUTENTICAÇÃO ---
 def tela_login():
     st.markdown("""
-    <div style='text-align:center; margin-bottom:2rem;'>
-        <svg width="56" height="56" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="24" cy="24" r="22" fill="none" stroke="#2F81F7" stroke-width="3"/>
-            <circle cx="24" cy="24" r="13" fill="none" stroke="#2F81F7" stroke-width="2.5" opacity="0.7"/>
-            <circle cx="24" cy="24" r="4" fill="#2F81F7"/>
-            <line x1="24" y1="0" x2="24" y2="10" stroke="#2F81F7" stroke-width="3"/>
-            <line x1="24" y1="38" x2="24" y2="48" stroke="#2F81F7" stroke-width="3"/>
-            <line x1="0" y1="24" x2="10" y2="24" stroke="#2F81F7" stroke-width="3"/>
-            <line x1="38" y1="24" x2="48" y2="24" stroke="#2F81F7" stroke-width="3"/>
+    <div style='text-align:center; margin-bottom:2rem; display:flex; justify-content:center;'>
+        <svg width="200" height="56" viewBox="0 0 240 64" xmlns="http://www.w3.org/2000/svg">
+            <g transform="translate(8, 8)">
+                <circle cx="24" cy="24" r="22" fill="none" stroke="#2F81F7" stroke-width="3"/>
+                <circle cx="24" cy="24" r="13" fill="none" stroke="#2F81F7" stroke-width="2.5" opacity="0.7"/>
+                <circle cx="24" cy="24" r="4" fill="#2F81F7"/>
+                <line x1="24" y1="0" x2="24" y2="10" stroke="#2F81F7" stroke-width="3"/>
+                <line x1="24" y1="38" x2="24" y2="48" stroke="#2F81F7" stroke-width="3"/>
+                <line x1="0" y1="24" x2="10" y2="24" stroke="#2F81F7" stroke-width="3"/>
+                <line x1="38" y1="24" x2="48" y2="24" stroke="#2F81F7" stroke-width="3"/>
+            </g>
+            <text x="72" y="42" font-family="Inter, sans-serif" font-size="32" font-weight="600" fill="#E6EDF3">Mira</text>
         </svg>
-        <h2 style='margin:0.5rem 0 0 0;'>Mira</h2>
     </div>
     """, unsafe_allow_html=True)
     
@@ -599,8 +601,8 @@ def criar_pdf(dados, nicho, regiao):
 c_title, c_user = st.columns([3, 1])
 with c_title:
     st.markdown("""
-    <div style='display:flex; align-items:center; gap:10px;'>
-        <svg width="36" height="36" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+    <svg width="180" height="50" viewBox="0 0 240 64" xmlns="http://www.w3.org/2000/svg">
+        <g transform="translate(8, 8)">
             <circle cx="24" cy="24" r="22" fill="none" stroke="#2F81F7" stroke-width="3"/>
             <circle cx="24" cy="24" r="13" fill="none" stroke="#2F81F7" stroke-width="2.5" opacity="0.7"/>
             <circle cx="24" cy="24" r="4" fill="#2F81F7"/>
@@ -608,9 +610,9 @@ with c_title:
             <line x1="24" y1="38" x2="24" y2="48" stroke="#2F81F7" stroke-width="3"/>
             <line x1="0" y1="24" x2="10" y2="24" stroke="#2F81F7" stroke-width="3"/>
             <line x1="38" y1="24" x2="48" y2="24" stroke="#2F81F7" stroke-width="3"/>
-        </svg>
-        <h1 style='font-size: 1.8rem; margin:0;'>Mira</h1>
-    </div>
+        </g>
+        <text x="72" y="42" font-family="Inter, sans-serif" font-size="32" font-weight="600" fill="#E6EDF3">Mira</text>
+    </svg>
     """, unsafe_allow_html=True)
     st.caption("Encontra os clientes certos, sem perder tempo.")
 
