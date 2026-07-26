@@ -354,6 +354,36 @@ def calcular_score_oportunidade(site, avaliacao, num_avaliacoes, telefone):
     if not telefone: score -= 10
     return score
 
+def temperatura_lead(score):
+    if score >= 40: return "🔴 Quente"
+    if score >= 15: return "🟡 Morno"
+    return "🔵 Frio"
+
+# --- STATUS DO LEAD (mini-CRM) ---
+def carregar_status_leads(user_id, nomes):
+    sb = get_supabase()
+    if not sb or not nomes: return {}
+    resp = sb.table("leads_status").select("nome_empresa, status").eq("user_id", user_id).in_("nome_empresa", nomes).execute()
+    return {r["nome_empresa"]: r["status"] for r in resp.data} if resp.data else {}
+
+def salvar_status_lead(user_id, nome_empresa, status):
+    sb = get_supabase()
+    if not sb: return
+    sb.table("leads_status").upsert({
+        "user_id": user_id, "nome_empresa": nome_empresa, "status": status,
+        "atualizado_em": "now()"
+    }, on_conflict="user_id,nome_empresa").execute()
+
+def contar_status_mes(user_id):
+    sb = get_supabase()
+    if not sb: return {}
+    resp = sb.table("leads_status").select("status").eq("user_id", user_id).execute()
+    contagem = {"Novo": 0, "Contactado": 0, "Respondeu": 0, "Fechado": 0}
+    for r in (resp.data or []):
+        s = r.get("status", "Novo")
+        contagem[s] = contagem.get(s, 0) + 1
+    return contagem
+
 # --- INTEGRAÇÃO IA ---
 def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key, remetente_nome="Um consultor"):
     if not api_key: return "Erro: Chave API OpenRouter necessária."
@@ -647,8 +677,23 @@ if st.button("Iniciar Varredura 🚀", type="primary", use_container_width=True)
 # Exibição de Resultados
 if 'leads' in st.session_state:
     df = pd.DataFrame(st.session_state['leads'])
+    df["Temperatura"] = df["Score"].apply(temperatura_lead)
+
+    # Painel de KPIs
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1.metric("Leads Encontrados", len(df))
+    kpi2.metric("Quentes 🔴", (df["Temperatura"] == "🔴 Quente").sum())
+    kpi3.metric("Com E-mail", (df["E-mail"] != "").sum())
+
+    contagem_status = contar_status_mes(st.session_state.get("chave_cliente", ""))
+    kpi4.metric("Fechados (total)", contagem_status.get("Fechado", 0))
+
     st.markdown(f"### 🎯 Oportunidades Encontradas ({len(df)})")
     st.dataframe(df, use_container_width=True)
+
+    if "status_leads" not in st.session_state:
+        nomes = [l["Nome"] for l in st.session_state['leads']]
+        st.session_state["status_leads"] = carregar_status_leads(st.session_state.get("chave_cliente", ""), nomes)
 
     st.markdown("---")
     st.markdown("### 🧠 Gerar Abordagens com IA")
@@ -672,9 +717,18 @@ if 'leads' in st.session_state:
             if not empresa.get("Análise IA"): continue
             
             mensagem = extrair_mensagem_da_analise(empresa["Análise IA"])
-            with st.expander(f"📍 {empresa['Nome']} (Score: {empresa['Score']})"):
+            with st.expander(f"📍 {empresa['Nome']} (Score: {empresa['Score']} · {temperatura_lead(empresa['Score'])})"):
                 st.markdown(empresa["Análise IA"])
                 msg_editada = st.text_area("Mensagem de Envio", value=mensagem, key=f"msg_{idx}", height=100)
+
+                status_atual = st.session_state.get("status_leads", {}).get(empresa["Nome"], "Novo")
+                novo_status = st.selectbox("Status", ["Novo", "Contactado", "Respondeu", "Fechado"],
+                                            index=["Novo", "Contactado", "Respondeu", "Fechado"].index(status_atual),
+                                            key=f"status_{idx}")
+                if novo_status != status_atual:
+                    salvar_status_lead(st.session_state.get("chave_cliente", ""), empresa["Nome"], novo_status)
+                    st.session_state.setdefault("status_leads", {})[empresa["Nome"]] = novo_status
+                    st.rerun()
 
                 colA, colB = st.columns(2)
                 
