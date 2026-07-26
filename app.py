@@ -271,7 +271,12 @@ def tela_login():
                         st.session_state["autenticado"] = True
                         st.session_state["chave_cliente"] = resp.user.id
                         st.session_state["email_cliente"] = email
-                        st.session_state["nome_cliente"] = buscar_apelido(resp.user.id, email)
+                        dados_perfil = buscar_perfil_completo(resp.user.id)
+                        st.session_state["nome_cliente"] = dados_perfil["apelido"] or email.split("@")[0]
+                        st.session_state["perfil_apelido"] = dados_perfil["apelido"]
+                        st.session_state["perfil_empresa"] = dados_perfil["empresa"]
+                        st.session_state["perfil_oferta"] = dados_perfil["perfil_oferta"]
+                        st.session_state["perfil_carregado"] = True
                         st.rerun()
                     except Exception:
                         st.error("E-mail ou senha incorretos.")
@@ -282,6 +287,18 @@ def tela_login():
                     st.session_state["email_cliente"] = email or "demo@saas.com"
                     st.session_state["nome_cliente"] = email.split("@")[0] if email else "Utilizador"
                     st.rerun()
+
+            with st.expander("Esqueci a senha"):
+                email_recuperar = st.text_input("O teu e-mail", key="email_recuperar")
+                if st.button("Enviar link de recuperação", key="btn_recuperar", use_container_width=True):
+                    if sb and email_recuperar:
+                        try:
+                            sb.auth.reset_password_email(email_recuperar)
+                            st.success("Se esse e-mail estiver registado, foi enviado um link de recuperação. Confere também o Spam.")
+                        except Exception as e:
+                            st.error(f"Erro ao enviar: {e}")
+                    else:
+                        st.warning("Escreve o teu e-mail primeiro.")
 
         with aba_criar:
             novo_email = st.text_input("E-mail", key="cad_email")
