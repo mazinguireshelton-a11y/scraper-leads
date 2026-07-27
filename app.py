@@ -32,6 +32,18 @@ try:
 except ImportError:
     pass
 
+# --- COOKIES: mantém a sessão ligada mesmo depois de recarregar a página ---
+from streamlit_cookies_manager import EncryptedCookieManager
+
+try:
+    _cookie_password = st.secrets.get("COOKIES_PASSWORD", os.getenv("COOKIES_PASSWORD", "mira-troque-esta-chave-2026"))
+except Exception:
+    _cookie_password = os.getenv("COOKIES_PASSWORD", "mira-troque-esta-chave-2026")
+
+cookies = EncryptedCookieManager(prefix="mira_", password=_cookie_password)
+if not cookies.ready():
+    st.stop()
+
 # A recuperação de senha usa token_hash como query param normal (?token_hash=...&type=recovery),
 # configurado no template de e-mail do Supabase. Isso evita problemas de segurança do
 # navegador que impediam a leitura do link antigo (baseado em #access_token).
@@ -267,6 +279,7 @@ def tela_login():
         with aba_entrar:
             email = st.text_input("E-mail", key="login_email")
             senha = st.text_input("Senha", type="password", key="login_senha")
+            manter_sessao = st.checkbox("Manter sessão iniciada neste dispositivo", value=True, key="manter_sessao")
             if st.button("Entrar no Painel", type="primary", key="btn_entrar", use_container_width=True):
                 if sb:
                     try:
@@ -281,6 +294,11 @@ def tela_login():
                         st.session_state["perfil_empresa"] = dados_perfil["empresa"]
                         st.session_state["perfil_oferta"] = dados_perfil["perfil_oferta"]
                         st.session_state["perfil_carregado"] = True
+
+                        if manter_sessao and resp.session:
+                            cookies["refresh_token"] = resp.session.refresh_token
+                            cookies.save()
+
                         st.rerun()
                     except Exception:
                         st.error("E-mail ou senha incorretos.")
@@ -364,11 +382,42 @@ def tela_definir_nova_senha(token_hash):
                     st.error(f"Este link pode ter expirado ou já foi usado. Pede um novo link de recuperação. ({e})")
     st.stop()
 
+def restaurar_sessao_do_cookie():
+    """Tenta religar a sessão usando o refresh_token guardado no cookie do navegador."""
+    refresh_token = cookies.get("refresh_token")
+    if not refresh_token:
+        return False
+    sb = get_supabase()
+    if not sb:
+        return False
+    try:
+        resp = sb.auth.refresh_session(refresh_token)
+        dados_perfil = buscar_perfil_completo(resp.user.id)
+        st.session_state["autenticado"] = True
+        st.session_state["chave_cliente"] = resp.user.id
+        st.session_state["email_cliente"] = resp.user.email
+        st.session_state["nome_cliente"] = dados_perfil["apelido"] or resp.user.email.split("@")[0]
+        st.session_state["perfil_apelido"] = dados_perfil["apelido"]
+        st.session_state["perfil_empresa"] = dados_perfil["empresa"]
+        st.session_state["perfil_oferta"] = dados_perfil["perfil_oferta"]
+        st.session_state["perfil_carregado"] = True
+        # Atualiza o cookie com o novo refresh_token (Supabase rotaciona a cada uso)
+        if resp.session:
+            cookies["refresh_token"] = resp.session.refresh_token
+            cookies.save()
+        return True
+    except Exception:
+        # Cookie inválido/expirado - limpa e segue pro login normal
+        cookies["refresh_token"] = ""
+        cookies.save()
+        return False
+
 if "autenticado" not in st.session_state:
     _qp = st.query_params
     if _qp.get("type") == "recovery" and _qp.get("token_hash"):
         tela_definir_nova_senha(_qp.get("token_hash"))
-    tela_login()
+    if not restaurar_sessao_do_cookie():
+        tela_login()
 
 # --- FUNÇÕES DE NEGÓCIO E RASTREIO ---
 def limpar_para_pdf(texto):
@@ -668,6 +717,8 @@ with c_user:
         st.session_state["vista"] = "perfil"
         st.rerun()
     if st.button("Sair", key="btn_logout"):
+        cookies["refresh_token"] = ""
+        cookies.save()
         st.session_state.clear()
         st.rerun()
 
