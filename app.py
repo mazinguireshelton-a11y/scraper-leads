@@ -773,12 +773,6 @@ nicho = col1.text_input("Nicho / Setor", placeholder="Ex: Clínicas, Restaurante
 regiao = col2.text_input("Região", placeholder="Ex: Maputo, Lisboa")
 max_leads = col3.number_input("Qtd. Máxima", min_value=1, max_value=50, value=10)
 
-# Formulário de Busca
-col1, col2, col3 = st.columns([2, 2, 1])
-nicho = col1.text_input("Nicho / Setor", placeholder="Ex: Clínicas, Restaurantes")
-regiao = col2.text_input("Região", placeholder="Ex: Maputo, Lisboa")
-max_leads = col3.number_input("Qtd. Máxima", min_value=1, max_value=50, value=10)
-
 if st.button("Iniciar Varredura 🚀", type="primary", use_container_width=True):
     if not nicho or not regiao:
         st.warning("Preenche o Nicho e a Região para pesquisar.")
