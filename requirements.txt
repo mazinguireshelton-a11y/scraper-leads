@@ -6,3 +6,4 @@ python-docx
 reportlab
 python-dotenv
 supabase
+streamlit-cookies-manager
