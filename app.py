@@ -32,26 +32,9 @@ try:
 except ImportError:
     pass
 
-# --- PONTE JS: o link de recuperação de senha do Supabase manda o token
-# depois do "#" na URL, que o Python NÃO consegue ler diretamente.
-# Este script converte isso em query params normais (depois do "?"),
-# que o Streamlit já lê. Sem isso, o link cai sempre na tela de login.
-import streamlit.components.v1 as components
-components.html("""
-<script>
-try {
-    var parentLoc = window.parent.location;
-    if (parentLoc.hash && parentLoc.hash.includes('access_token')) {
-        var hash = parentLoc.hash.substring(1);
-        var params = new URLSearchParams(hash);
-        var newUrl = parentLoc.pathname + '?' + params.toString();
-        window.parent.location.href = newUrl;
-    }
-} catch (e) {
-    console.error('Mira redirect bridge error:', e);
-}
-</script>
-""", height=0)
+# A recuperação de senha usa token_hash como query param normal (?token_hash=...&type=recovery),
+# configurado no template de e-mail do Supabase. Isso evita problemas de segurança do
+# navegador que impediam a leitura do link antigo (baseado em #access_token).
 
 # --- CONFIGURAÇÃO DE CHAVES DE API ---
 try:
@@ -342,7 +325,7 @@ def tela_login():
 
     st.stop()
 
-def tela_definir_nova_senha(access_token, refresh_token):
+def tela_definir_nova_senha(token_hash):
     st.markdown("<h2 style='text-align:center;'>Definir Nova Senha</h2>", unsafe_allow_html=True)
     col = st.columns([1, 2, 1])[1]
     with col:
@@ -356,18 +339,20 @@ def tela_definir_nova_senha(access_token, refresh_token):
             else:
                 sb = get_supabase()
                 try:
-                    sb.auth.set_session(access_token, refresh_token)
+                    resp = sb.auth.verify_otp({"token_hash": token_hash, "type": "recovery"})
+                    if resp.session:
+                        sb.auth.set_session(resp.session.access_token, resp.session.refresh_token)
                     sb.auth.update_user({"password": nova})
-                    st.success("Senha atualizada! Podes voltar e fazer login com a nova senha.")
+                    st.success("Senha atualizada! Podes fechar esta página e fazer login com a nova senha.")
                     st.query_params.clear()
                 except Exception as e:
-                    st.error(f"Erro ao atualizar a senha: {e}")
+                    st.error(f"Este link pode ter expirado ou já foi usado. Pede um novo link de recuperação. ({e})")
     st.stop()
 
 if "autenticado" not in st.session_state:
     _qp = st.query_params
-    if _qp.get("type") == "recovery" and _qp.get("access_token"):
-        tela_definir_nova_senha(_qp.get("access_token"), _qp.get("refresh_token"))
+    if _qp.get("type") == "recovery" and _qp.get("token_hash"):
+        tela_definir_nova_senha(_qp.get("token_hash"))
     tela_login()
 
 # --- FUNÇÕES DE NEGÓCIO E RASTREIO ---
