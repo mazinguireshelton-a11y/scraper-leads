@@ -343,8 +343,23 @@ def tela_definir_nova_senha(token_hash):
                     if resp.session:
                         sb.auth.set_session(resp.session.access_token, resp.session.refresh_token)
                     sb.auth.update_user({"password": nova})
-                    st.success("Senha atualizada! Podes fechar esta página e fazer login com a nova senha.")
+
+                    # Já entra direto no painel, aproveitando a sessão que acabou de ser validada
+                    user_id = resp.user.id
+                    email = resp.user.email
+                    dados_perfil = buscar_perfil_completo(user_id)
+                    st.session_state["autenticado"] = True
+                    st.session_state["chave_cliente"] = user_id
+                    st.session_state["email_cliente"] = email
+                    st.session_state["nome_cliente"] = dados_perfil["apelido"] or email.split("@")[0]
+                    st.session_state["perfil_apelido"] = dados_perfil["apelido"]
+                    st.session_state["perfil_empresa"] = dados_perfil["empresa"]
+                    st.session_state["perfil_oferta"] = dados_perfil["perfil_oferta"]
+                    st.session_state["perfil_carregado"] = True
+
                     st.query_params.clear()
+                    st.success("Senha atualizada! A entrar...")
+                    st.rerun()
                 except Exception as e:
                     st.error(f"Este link pode ter expirado ou já foi usado. Pede um novo link de recuperação. ({e})")
     st.stop()
