@@ -39,11 +39,16 @@ except ImportError:
 import streamlit.components.v1 as components
 components.html("""
 <script>
-if (window.location.hash && window.location.hash.includes('access_token')) {
-    const hash = window.location.hash.substring(1);
-    const params = new URLSearchParams(hash);
-    const newUrl = window.location.pathname + '?' + params.toString();
-    window.location.href = newUrl;
+try {
+    var parentLoc = window.parent.location;
+    if (parentLoc.hash && parentLoc.hash.includes('access_token')) {
+        var hash = parentLoc.hash.substring(1);
+        var params = new URLSearchParams(hash);
+        var newUrl = parentLoc.pathname + '?' + params.toString();
+        window.parent.location.href = newUrl;
+    }
+} catch (e) {
+    console.error('Mira redirect bridge error:', e);
 }
 </script>
 """, height=0)
