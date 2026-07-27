@@ -773,19 +773,11 @@ nicho = col1.text_input("Nicho / Setor", placeholder="Ex: Clínicas, Restaurante
 regiao = col2.text_input("Região", placeholder="Ex: Maputo, Lisboa")
 max_leads = col3.number_input("Qtd. Máxima", min_value=1, max_value=50, value=10)
 
-tem_perfil = bool(st.session_state.get("perfil_oferta", "").strip())
-if tem_perfil:
-    usar_perfil = st.checkbox(
-        f"Usar o meu perfil guardado como objetivo: \"{st.session_state['perfil_oferta'][:80]}{'...' if len(st.session_state['perfil_oferta']) > 80 else ''}\"",
-        value=True
-    )
-else:
-    usar_perfil = False
-
-if usar_perfil:
-    objetivo = st.session_state["perfil_oferta"]
-else:
-    objetivo = st.text_input("Objetivo Comercial", placeholder="Ex: Vender gestão de redes sociais e websites")
+# Formulário de Busca
+col1, col2, col3 = st.columns([2, 2, 1])
+nicho = col1.text_input("Nicho / Setor", placeholder="Ex: Clínicas, Restaurantes")
+regiao = col2.text_input("Região", placeholder="Ex: Maputo, Lisboa")
+max_leads = col3.number_input("Qtd. Máxima", min_value=1, max_value=50, value=10)
 
 if st.button("Iniciar Varredura 🚀", type="primary", use_container_width=True):
     if not nicho or not regiao:
@@ -800,7 +792,7 @@ if st.button("Iniciar Varredura 🚀", type="primary", use_container_width=True)
                                               lambda c, t, m: bar.progress(min(c/t, 1.0), m))
             bar.empty()
             if resultados:
-                st.session_state.update({'leads': resultados, 'n': nicho, 'r': regiao, 'obj': objetivo})
+                st.session_state.update({'leads': resultados, 'n': nicho, 'r': regiao})
             else:
                 st.info("Nenhuma empresa encontrada para essa região com este termo.")
 
@@ -835,7 +827,7 @@ if 'leads' in st.session_state:
         placeholder=f"Deixa em branco para usar o teu perfil: \"{st.session_state.get('perfil_oferta', '')[:70]}...\"" if tem_perfil else "Ex: Vender gestão de redes sociais",
         height=70
     )
-    objetivo_atual = objetivo_digitado.strip() or st.session_state.get("perfil_oferta", "").strip() or st.session_state.get('obj', '')
+    objetivo_atual = objetivo_digitado.strip() or st.session_state.get("perfil_oferta", "").strip()
     if not objetivo_digitado.strip() and tem_perfil:
         st.caption("✓ Usando o teu perfil guardado (nenhum objetivo específico digitado acima).")
 
