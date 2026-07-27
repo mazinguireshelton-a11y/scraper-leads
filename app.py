@@ -507,6 +507,42 @@ def contar_status_mes(user_id):
         contagem[s] = contagem.get(s, 0) + 1
     return contagem
 
+def listar_leads_status(user_id):
+    """Devolve todos os leads guardados do cliente, mais recentes primeiro."""
+    sb = get_supabase()
+    if not sb: return []
+    resp = sb.table("leads_status").select("*").eq("user_id", user_id).order("atualizado_em", desc=True).execute()
+    return resp.data or []
+
+def dias_desde(data_iso):
+    from datetime import datetime, timezone
+    try:
+        dt = datetime.fromisoformat(data_iso.replace("Z", "+00:00"))
+        return (datetime.now(timezone.utc) - dt).days
+    except Exception:
+        return None
+
+def dica_ia_para_lead(nome_empresa, status, dias, perfil_oferta, api_key):
+    if not api_key:
+        return "Erro: Chave API OpenRouter necessária."
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    prompt = f"""
+    Estou a prospectar a empresa '{nome_empresa}'. Status atual: {status}.
+    Já se passaram {dias if dias is not None else '?'} dias desde a última atualização.
+    Eu ofereço: {perfil_oferta or 'serviços diversos'}.
+    Dá uma sugestão curta e prática (máximo 3 frases) do que fazer a seguir com este lead,
+    considerando o status e o tempo parado. Responde em Português, direto ao ponto.
+    """
+    for modelo in ["openrouter/free", "meta-llama/llama-3.3-70b-instruct:free"]:
+        try:
+            payload = {"model": modelo, "messages": [{"role": "user", "content": prompt}]}
+            res = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=25)
+            if res.status_code == 200:
+                return res.json()['choices'][0]['message']['content'].strip()
+        except Exception:
+            continue
+    return "Não foi possível gerar a dica agora."
+
 # --- INTEGRAÇÃO IA ---
 def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key, remetente_nome="Um consultor"):
     if not api_key: return "Erro: Chave API OpenRouter necessária."
@@ -716,6 +752,9 @@ with c_user:
     if st.button(f"👤 {st.session_state.get('nome_cliente', 'Utilizador')}", key="btn_abrir_perfil", use_container_width=True):
         st.session_state["vista"] = "perfil"
         st.rerun()
+    if st.button("📋 Meus Leads", key="btn_abrir_leads", use_container_width=True):
+        st.session_state["vista"] = "leads"
+        st.rerun()
     if st.button("Sair", key="btn_logout"):
         cookies["refresh_token"] = ""
         cookies.save()
@@ -757,6 +796,62 @@ if st.session_state.get("vista") == "perfil":
             st.rerun()
 
     st.stop()  # não mostra o resto da página enquanto estiver na vista de perfil
+
+# --- PÁGINA MEUS LEADS (histórico + assistente IA) ---
+if st.session_state.get("vista") == "leads":
+    st.markdown("## 📋 Meus Leads")
+    st.caption("Histórico de todas as empresas que já marcaste com um status — com dicas da IA sobre o que fazer a seguir.")
+
+    if st.button("← Voltar à busca", key="voltar_de_leads"):
+        st.session_state["vista"] = "busca"
+        st.rerun()
+
+    todos_leads = listar_leads_status(st.session_state.get("chave_cliente", ""))
+
+    if not todos_leads:
+        st.info("Ainda não marcaste nenhum lead. Faz uma busca, gera propostas com IA, e muda o status de alguma empresa para começar a aparecer aqui.")
+    else:
+        contagem = contar_status_mes(st.session_state.get("chave_cliente", ""))
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Novo", contagem.get("Novo", 0))
+        k2.metric("Contactado", contagem.get("Contactado", 0))
+        k3.metric("Respondeu", contagem.get("Respondeu", 0))
+        k4.metric("Fechado", contagem.get("Fechado", 0))
+
+        st.divider()
+
+        filtro = st.multiselect("Filtrar por status", ["Novo", "Contactado", "Respondeu", "Fechado"],
+                                 default=["Novo", "Contactado", "Respondeu", "Fechado"])
+
+        for lead in todos_leads:
+            if lead["status"] not in filtro:
+                continue
+            dias = dias_desde(lead.get("atualizado_em", ""))
+            texto_dias = f"há {dias} dia(s)" if dias is not None else ""
+
+            with st.expander(f"{lead['nome_empresa']} — {lead['status']} ({texto_dias})"):
+                col_status, col_dica = st.columns(2)
+
+                with col_status:
+                    novo_status = st.selectbox(
+                        "Atualizar status", ["Novo", "Contactado", "Respondeu", "Fechado"],
+                        index=["Novo", "Contactado", "Respondeu", "Fechado"].index(lead["status"]),
+                        key=f"status_hist_{lead['id']}"
+                    )
+                    if novo_status != lead["status"]:
+                        salvar_status_lead(st.session_state.get("chave_cliente", ""), lead["nome_empresa"], novo_status)
+                        st.rerun()
+
+                with col_dica:
+                    if st.button("💡 Pedir dica da IA", key=f"dica_{lead['id']}", use_container_width=True):
+                        with st.spinner("A pensar no próximo passo..."):
+                            dica = dica_ia_para_lead(
+                                lead["nome_empresa"], lead["status"], dias,
+                                st.session_state.get("perfil_oferta", ""), OPENROUTER_API_KEY
+                            )
+                        st.info(dica)
+
+    st.stop()
 
 # Sidebar de Configurações do Gmail
 with st.sidebar:
