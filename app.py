@@ -522,6 +522,14 @@ def dias_desde(data_iso):
     except Exception:
         return None
 
+def _resposta_valida(texto):
+    """Detecta se a IA devolveu um veredito de moderação em vez de texto de verdade."""
+    if not texto or len(texto.strip()) < 15:
+        return False
+    marcas_moderacao = ["user safety", "response safety", "safety categories", '"rating"']
+    texto_lower = texto.lower()
+    return not any(marca in texto_lower for marca in marcas_moderacao)
+
 def dica_ia_para_lead(nome_empresa, status, dias, perfil_oferta, api_key):
     if not api_key:
         return "Erro: Chave API OpenRouter necessária."
@@ -533,12 +541,14 @@ def dica_ia_para_lead(nome_empresa, status, dias, perfil_oferta, api_key):
     Dá uma sugestão curta e prática (máximo 3 frases) do que fazer a seguir com este lead,
     considerando o status e o tempo parado. Responde em Português, direto ao ponto.
     """
-    for modelo in ["openrouter/free", "meta-llama/llama-3.3-70b-instruct:free"]:
+    for modelo in ["meta-llama/llama-3.3-70b-instruct:free", "google/gemma-3-27b-it:free", "mistralai/mistral-7b-instruct:free"]:
         try:
             payload = {"model": modelo, "messages": [{"role": "user", "content": prompt}]}
             res = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=25)
             if res.status_code == 200:
-                return res.json()['choices'][0]['message']['content'].strip()
+                texto = res.json()['choices'][0]['message']['content'].strip()
+                if _resposta_valida(texto):
+                    return texto
         except Exception:
             continue
     return "Não foi possível gerar a dica agora."
@@ -563,13 +573,14 @@ def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key, remetente_n
     2. MENSAGEM: (1 mensagem persuasiva de WhatsApp para abordagem, assinada com o nome "{remetente_nome}" no lugar de qualquer placeholder tipo "[Seu Nome]")
     """
 
-    for modelo in ["openrouter/free", "meta-llama/llama-3.3-70b-instruct:free"]:
+    for modelo in ["meta-llama/llama-3.3-70b-instruct:free", "google/gemma-3-27b-it:free", "mistralai/mistral-7b-instruct:free"]:
         try:
             payload = {"model": modelo, "messages": [{"role": "user", "content": prompt}]}
             res = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=25)
             if res.status_code == 200:
                 texto = res.json()['choices'][0]['message']['content'].strip()
-                return f"{texto}"
+                if _resposta_valida(texto):
+                    return texto
         except Exception:
             continue
     return "Não foi possível gerar análise no momento."
