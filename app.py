@@ -541,7 +541,7 @@ def dica_ia_para_lead(nome_empresa, status, dias, perfil_oferta, api_key):
     Dá uma sugestão curta e prática (máximo 3 frases) do que fazer a seguir com este lead,
     considerando o status e o tempo parado. Responde em Português, direto ao ponto.
     """
-    for modelo in ["meta-llama/llama-3.3-70b-instruct:free", "google/gemma-3-27b-it:free", "mistralai/mistral-7b-instruct:free"]:
+    for modelo in ["openrouter/free", "google/gemma-4-31b-it:free", "nvidia/nemotron-3-super-120b-a12b:free"]:
         try:
             payload = {"model": modelo, "messages": [{"role": "user", "content": prompt}]}
             res = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=25)
@@ -574,7 +574,7 @@ def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key, remetente_n
     """
 
     erros_debug = []
-    for modelo in ["meta-llama/llama-3.3-70b-instruct:free", "google/gemma-3-27b-it:free", "mistralai/mistral-7b-instruct:free"]:
+    for modelo in ["openrouter/free", "google/gemma-4-31b-it:free", "nvidia/nemotron-3-super-120b-a12b:free"]:
         try:
             payload = {"model": modelo, "messages": [{"role": "user", "content": prompt}]}
             res = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=25)
