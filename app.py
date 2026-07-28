@@ -555,7 +555,7 @@ def dica_ia_para_lead(nome_empresa, status, dias, perfil_oferta, api_key):
 
 # --- INTEGRAÇÃO IA ---
 def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key, remetente_nome="Um consultor"):
-    if not api_key: return "Erro: Chave API OpenRouter necessária."
+    if not api_key: return "Erro: Chave API OpenRouter necessária.", "Chave API em falta"
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -581,7 +581,7 @@ def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key, remetente_n
             if res.status_code == 200:
                 texto = res.json()['choices'][0]['message']['content'].strip()
                 if _resposta_valida(texto):
-                    return texto
+                    return texto, None
                 else:
                     erros_debug.append(f"{modelo}: resposta inválida ({texto[:60]})")
             else:
@@ -589,8 +589,7 @@ def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key, remetente_n
         except Exception as e:
             erros_debug.append(f"{modelo}: exceção - {e}")
 
-    st.warning("DEBUG temporário: " + " | ".join(erros_debug))
-    return "Não foi possível gerar análise no momento."
+    return "Não foi possível gerar análise no momento.", " | ".join(erros_debug)
 
 # --- BUSCA EM CASCATA: OSM (grátis) -> RapidAPI (barato) -> Google (caro, último recurso) ---
 def buscar_lugares_osm(nicho, regiao, limit, progress=None):
@@ -938,17 +937,32 @@ if 'leads' in st.session_state:
     if not objetivo_digitado.strip() and tem_perfil:
         st.caption("✓ Usando o teu perfil guardado (nenhum objetivo específico digitado acima).")
 
-    qtd = st.slider("Quantidade de empresas para analisar:", 1, len(df), min(3, len(df)))
+    if len(df) <= 1:
+        qtd = len(df)
+        st.caption(f"Vai analisar {qtd} empresa encontrada.")
+    else:
+        qtd = st.slider("Quantidade de empresas para analisar:", 1, len(df), min(3, len(df)))
 
     if st.button("Gerar Propostas com IA 🤖", type="primary"):
+        st.session_state["debug_ia"] = []
         with st.spinner("A IA está a redigir as mensagens de abordagem..."):
             for i in range(qtd):
                 empresa = st.session_state['leads'][i]
-                resp = analisar_com_ia(empresa["Nome"], st.session_state['n'], empresa["Site"], 
+                resp, debug = analisar_com_ia(empresa["Nome"], st.session_state['n'], empresa["Site"], 
                                      empresa["Avaliação"], objetivo_atual, OPENROUTER_API_KEY,
                                      remetente_nome=st.session_state.get('nome_cliente', 'Um consultor'))
                 st.session_state['leads'][i]["Análise IA"] = resp
+                if debug:
+                    st.session_state["debug_ia"].append(f"{empresa['Nome']}: {debug}")
             st.rerun()
+
+    if st.session_state.get("debug_ia"):
+        with st.expander("⚠️ Detalhes do erro da IA (DEBUG)", expanded=True):
+            for linha in st.session_state["debug_ia"]:
+                st.code(linha)
+            if st.button("Fechar aviso de debug"):
+                st.session_state["debug_ia"] = []
+                st.rerun()
 
     # Cards de Envio (Glassmorphism)
     leads_com_analise = [l for l in st.session_state['leads'] if l.get("Análise IA")]
