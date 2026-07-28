@@ -44,6 +44,25 @@ cookies = EncryptedCookieManager(prefix="mira_", password=_cookie_password)
 if not cookies.ready():
     st.stop()
 
+# --- PONTE JS: o login com Google (OAuth) devolve o token depois do "#" na URL,
+# que o Python não consegue ler. Este script converte isso em query params (?),
+# que o Streamlit já lê. Só entra em ação quando existe um "access_token" no link.
+import streamlit.components.v1 as components
+components.html("""
+<script>
+try {
+    var loc = window.top.location;
+    if (loc.hash && loc.hash.includes('access_token')) {
+        var params = new URLSearchParams(loc.hash.substring(1));
+        var newUrl = loc.pathname + '?' + params.toString();
+        window.top.location.href = newUrl;
+    }
+} catch (e) {
+    console.error('Mira OAuth bridge error:', e);
+}
+</script>
+""", height=0)
+
 # A recuperação de senha usa token_hash como query param normal (?token_hash=...&type=recovery),
 # configurado no template de e-mail do Supabase. Isso evita problemas de segurança do
 # navegador que impediam a leitura do link antigo (baseado em #access_token).
@@ -242,22 +261,34 @@ def verificar_e_registrar_uso(user_id, email=""):
     if not sb:
         return True, "Modo de demonstração sem limites ativado."
 
+    cliente = sb.table("clientes").select("limite_diario, limite_total").eq("id", user_id).execute()
+    limite_diario = cliente.data[0]["limite_diario"] if cliente.data else LIMITE_DIARIO_PADRAO
+    limite_total = cliente.data[0].get("limite_total") if cliente.data else None
+
+    # Limite total fixo (ex: beta testers com 3 tentativas, nunca reseta)
+    if limite_total is not None:
+        todos_registros = sb.table("uso_diario").select("contagem").eq("user_id", user_id).execute()
+        usado_total = sum(r["contagem"] for r in (todos_registros.data or []))
+        if usado_total >= limite_total:
+            return False, f"Atingiste o limite de {limite_total} tentativas do modo beta. Obrigado por testar! Fala connosco para continuar a usar."
+
     hoje = str(date.today())
-    cliente = sb.table("clientes").select("limite_diario").eq("id", user_id).execute()
-    limite = cliente.data[0]["limite_diario"] if cliente.data else LIMITE_DIARIO_PADRAO
     registro = sb.table("uso_diario").select("*").eq("user_id", user_id).eq("data", hoje).execute()
 
     if registro.data:
         contagem = registro.data[0]["contagem"]
-        if contagem >= limite:
-            return False, f"Limite diário de {limite} buscas atingido."
+        if limite_total is None and contagem >= limite_diario:
+            return False, f"Limite diário de {limite_diario} buscas atingido."
         sb.table("uso_diario").update({"contagem": contagem + 1}).eq("user_id", user_id).eq("data", hoje).execute()
-        restantes = limite - (contagem + 1)
     else:
         sb.table("uso_diario").insert({"user_id": user_id, "data": hoje, "contagem": 1}).execute()
-        restantes = limite - 1
 
-    return True, f"{restantes} buscas restantes hoje."
+    if limite_total is not None:
+        restantes = limite_total - (usado_total + 1)
+        return True, f"{restantes} tentativa(s) beta restante(s)."
+    else:
+        restantes = limite_diario - (registro.data[0]["contagem"] + 1 if registro.data else 1)
+        return True, f"{restantes} buscas restantes hoje."
 
 # --- TELA DE AUTENTICAÇÃO ---
 def tela_login():
@@ -273,8 +304,26 @@ def tela_login():
     col_centered = st.columns([1, 2, 1])[1] if not st.session_state.get("is_mobile", False) else [st]
     
     with col_centered:
-        aba_entrar, aba_criar = st.tabs(["Entrar", "Criar conta"])
         sb = get_supabase()
+
+        if sb:
+            try:
+                site_url = st.secrets.get("SITE_URL", "")
+            except Exception:
+                site_url = ""
+            if st.button("🔵 Continuar com Google", use_container_width=True, key="btn_google"):
+                try:
+                    resp_oauth = sb.auth.sign_in_with_oauth({
+                        "provider": "google",
+                        "options": {"redirect_to": site_url} if site_url else {}
+                    })
+                    st.markdown(f"<meta http-equiv='refresh' content='0; url={resp_oauth.url}'>", unsafe_allow_html=True)
+                    st.link_button("Clica aqui se não fores redirecionado", resp_oauth.url, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Erro ao iniciar login com Google: {e}")
+            st.markdown("<p style='text-align:center; opacity:0.5; margin: 0.5rem 0;'>ou</p>", unsafe_allow_html=True)
+
+        aba_entrar, aba_criar = st.tabs(["Entrar", "Criar conta"])
 
         with aba_entrar:
             email = st.text_input("E-mail", key="login_email")
@@ -416,6 +465,30 @@ if "autenticado" not in st.session_state:
     _qp = st.query_params
     if _qp.get("type") == "recovery" and _qp.get("token_hash"):
         tela_definir_nova_senha(_qp.get("token_hash"))
+
+    # Retorno do login com Google: a URL traz access_token + refresh_token
+    if _qp.get("access_token") and _qp.get("refresh_token"):
+        sb = get_supabase()
+        try:
+            resp = sb.auth.set_session(_qp.get("access_token"), _qp.get("refresh_token"))
+            dados_perfil = buscar_perfil_completo(resp.user.id)
+            garantir_registro_cliente(resp.user.id, resp.user.email, dados_perfil.get("apelido"))
+            st.session_state["autenticado"] = True
+            st.session_state["chave_cliente"] = resp.user.id
+            st.session_state["email_cliente"] = resp.user.email
+            st.session_state["nome_cliente"] = dados_perfil["apelido"] or resp.user.email.split("@")[0]
+            st.session_state["perfil_apelido"] = dados_perfil["apelido"]
+            st.session_state["perfil_empresa"] = dados_perfil["empresa"]
+            st.session_state["perfil_oferta"] = dados_perfil["perfil_oferta"]
+            st.session_state["perfil_carregado"] = True
+            if resp.session:
+                cookies["refresh_token"] = resp.session.refresh_token
+                cookies.save()
+            st.query_params.clear()
+            st.rerun()
+        except Exception as e:
+            st.error(f"Erro ao entrar com Google: {e}")
+
     if not restaurar_sessao_do_cookie():
         tela_login()
 
