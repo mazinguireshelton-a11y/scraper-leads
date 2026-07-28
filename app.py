@@ -573,6 +573,7 @@ def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key, remetente_n
     2. MENSAGEM: (1 mensagem persuasiva de WhatsApp para abordagem, assinada com o nome "{remetente_nome}" no lugar de qualquer placeholder tipo "[Seu Nome]")
     """
 
+    erros_debug = []
     for modelo in ["meta-llama/llama-3.3-70b-instruct:free", "google/gemma-3-27b-it:free", "mistralai/mistral-7b-instruct:free"]:
         try:
             payload = {"model": modelo, "messages": [{"role": "user", "content": prompt}]}
@@ -581,8 +582,14 @@ def analisar_com_ia(nome, nicho, site, avaliacao, objetivo, api_key, remetente_n
                 texto = res.json()['choices'][0]['message']['content'].strip()
                 if _resposta_valida(texto):
                     return texto
-        except Exception:
-            continue
+                else:
+                    erros_debug.append(f"{modelo}: resposta inválida ({texto[:60]})")
+            else:
+                erros_debug.append(f"{modelo}: HTTP {res.status_code} - {res.text[:150]}")
+        except Exception as e:
+            erros_debug.append(f"{modelo}: exceção - {e}")
+
+    st.warning("DEBUG temporário: " + " | ".join(erros_debug))
     return "Não foi possível gerar análise no momento."
 
 # --- BUSCA EM CASCATA: OSM (grátis) -> RapidAPI (barato) -> Google (caro, último recurso) ---
