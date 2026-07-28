@@ -466,11 +466,11 @@ if "autenticado" not in st.session_state:
     if _qp.get("type") == "recovery" and _qp.get("token_hash"):
         tela_definir_nova_senha(_qp.get("token_hash"))
 
-    # Retorno do login com Google: a URL traz access_token + refresh_token
-    if _qp.get("access_token") and _qp.get("refresh_token"):
+    # Retorno do login com Google: a URL traz ?code=... (fluxo PKCE)
+    if _qp.get("code"):
         sb = get_supabase()
         try:
-            resp = sb.auth.set_session(_qp.get("access_token"), _qp.get("refresh_token"))
+            resp = sb.auth.exchange_code_for_session({"auth_code": _qp.get("code")})
             dados_perfil = buscar_perfil_completo(resp.user.id)
             garantir_registro_cliente(resp.user.id, resp.user.email, dados_perfil.get("apelido"))
             st.session_state["autenticado"] = True
