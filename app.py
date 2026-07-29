@@ -83,7 +83,8 @@ except Exception:
 
 SEARCH_URL = "https://local-business-data.p.rapidapi.com/search"
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-LIMITE_DIARIO_PADRAO = 5
+LIMITE_DIARIO_PADRAO = 3
+MAX_LEADS_FREE = 6
 EMAILS_ADMIN = ["mazinguireshelton@gmail.com"]
 
 # --- CSS PERSONALIZADO E ANIMAÇÕES LEVES ---
@@ -261,7 +262,13 @@ def verificar_e_registrar_uso(user_id, email=""):
     if not sb:
         return True, "Modo de demonstração sem limites ativado."
 
-    cliente = sb.table("clientes").select("limite_diario, limite_total").eq("id", user_id).execute()
+    cliente = sb.table("clientes").select("limite_diario, limite_total, plano").eq("id", user_id).execute()
+
+    # Premium: sem limite nenhum (nem busca, nem quantidade, nem IA)
+    plano = cliente.data[0].get("plano", "free") if cliente.data else "free"
+    if plano == "premium":
+        return True, "✨ Plano Premium — sem limites."
+
     limite_diario = cliente.data[0]["limite_diario"] if cliente.data else LIMITE_DIARIO_PADRAO
     limite_total = cliente.data[0].get("limite_total") if cliente.data else None
 
@@ -278,7 +285,7 @@ def verificar_e_registrar_uso(user_id, email=""):
     if registro.data:
         contagem = registro.data[0]["contagem"]
         if limite_total is None and contagem >= limite_diario:
-            return False, f"Limite diário de {limite_diario} buscas atingido."
+            return False, f"Limite diário de {limite_diario} buscas atingido. Upgrade para Premium para buscas ilimitadas."
         sb.table("uso_diario").update({"contagem": contagem + 1}).eq("user_id", user_id).eq("data", hoje).execute()
     else:
         sb.table("uso_diario").insert({"user_id": user_id, "data": hoje, "contagem": 1}).execute()
@@ -289,6 +296,34 @@ def verificar_e_registrar_uso(user_id, email=""):
     else:
         restantes = limite_diario - (registro.data[0]["contagem"] + 1 if registro.data else 1)
         return True, f"{restantes} buscas restantes hoje."
+
+def buscar_plano_cliente(user_id):
+    sb = get_supabase()
+    if not sb: return "free"
+    resp = sb.table("clientes").select("plano").eq("id", user_id).execute()
+    return resp.data[0].get("plano", "free") if resp.data else "free"
+
+def marcar_ia_usada(user_id):
+    sb = get_supabase()
+    if not sb: return
+    sb.table("clientes").update({"ia_usado": True}).eq("id", user_id).execute()
+
+def verificar_ia_disponivel(user_id, email=""):
+    """Retorna (permitido: bool, mensagem: str). No free, a IA só pode ser usada 1 vez para sempre."""
+    if email in EMAILS_ADMIN:
+        return True, ""
+    sb = get_supabase()
+    if not sb:
+        return True, ""
+    resp = sb.table("clientes").select("plano, ia_usado").eq("id", user_id).execute()
+    if not resp.data:
+        return True, ""
+    dados = resp.data[0]
+    if dados.get("plano") == "premium":
+        return True, ""
+    if dados.get("ia_usado"):
+        return False, "Já usaste a tua análise gratuita com IA. Faz upgrade para o Premium para gerar propostas ilimitadas."
+    return True, ""
 
 # --- TELA DE AUTENTICAÇÃO ---
 def tela_login():
@@ -952,11 +987,20 @@ with st.sidebar:
 
 st.markdown("<hr style='border-color: rgba(255,255,255,0.08); margin: 1rem 0;'>", unsafe_allow_html=True)
 
+# Busca o plano do cliente uma vez, pra ajustar os limites da interface
+if "plano_cliente" not in st.session_state:
+    st.session_state["plano_cliente"] = buscar_plano_cliente(st.session_state.get("chave_cliente", ""))
+eh_premium = st.session_state["plano_cliente"] == "premium" or st.session_state.get("email_cliente", "") in EMAILS_ADMIN
+
+if not eh_premium:
+    st.caption("🆓 Plano Grátis: 3 buscas/dia · até 6 empresas por busca · 1 uso da IA. [Upgrade para Premium →](#)")
+
 # Formulário de Busca
 col1, col2, col3 = st.columns([2, 2, 1])
 nicho = col1.text_input("Nicho / Setor", placeholder="Ex: Clínicas, Restaurantes")
 regiao = col2.text_input("Região", placeholder="Ex: Maputo, Lisboa")
-max_leads = col3.number_input("Qtd. Máxima", min_value=1, max_value=50, value=10)
+limite_qtd = 50 if eh_premium else MAX_LEADS_FREE
+max_leads = col3.number_input("Qtd. Máxima", min_value=1, max_value=limite_qtd, value=min(10, limite_qtd))
 
 if st.button("Iniciar Varredura 🚀", type="primary", use_container_width=True):
     if not nicho or not regiao:
@@ -966,8 +1010,10 @@ if st.button("Iniciar Varredura 🚀", type="primary", use_container_width=True)
         if not permitido:
             st.error(msg_uso)
         else:
+            # Reforço no servidor: mesmo que alguém force o campo, o free nunca passa de MAX_LEADS_FREE
+            max_leads_real = max_leads if eh_premium else min(max_leads, MAX_LEADS_FREE)
             bar = st.progress(0, "Iniciando...")
-            resultados = buscar_leads_cascata(nicho, regiao, max_leads, RAPIDAPI_KEY, GOOGLE_PLACES_API_KEY,
+            resultados = buscar_leads_cascata(nicho, regiao, max_leads_real, RAPIDAPI_KEY, GOOGLE_PLACES_API_KEY,
                                               lambda c, t, m: bar.progress(min(c/t, 1.0), m))
             bar.empty()
             if resultados:
@@ -1017,17 +1063,23 @@ if 'leads' in st.session_state:
         qtd = st.slider("Quantidade de empresas para analisar:", 1, len(df), min(3, len(df)))
 
     if st.button("Gerar Propostas com IA 🤖", type="primary"):
-        st.session_state["debug_ia"] = []
-        with st.spinner("A IA está a redigir as mensagens de abordagem..."):
-            for i in range(qtd):
-                empresa = st.session_state['leads'][i]
-                resp, debug = analisar_com_ia(empresa["Nome"], st.session_state['n'], empresa["Site"], 
-                                     empresa["Avaliação"], objetivo_atual, OPENROUTER_API_KEY,
-                                     remetente_nome=st.session_state.get('nome_cliente', 'Um consultor'))
-                st.session_state['leads'][i]["Análise IA"] = resp
-                if debug:
-                    st.session_state["debug_ia"].append(f"{empresa['Nome']}: {debug}")
-            st.rerun()
+        pode_ia, msg_ia = verificar_ia_disponivel(st.session_state.get("chave_cliente", ""), st.session_state.get("email_cliente", ""))
+        if not pode_ia:
+            st.error(msg_ia)
+        else:
+            st.session_state["debug_ia"] = []
+            with st.spinner("A IA está a redigir as mensagens de abordagem..."):
+                for i in range(qtd):
+                    empresa = st.session_state['leads'][i]
+                    resp, debug = analisar_com_ia(empresa["Nome"], st.session_state['n'], empresa["Site"], 
+                                         empresa["Avaliação"], objetivo_atual, OPENROUTER_API_KEY,
+                                         remetente_nome=st.session_state.get('nome_cliente', 'Um consultor'))
+                    st.session_state['leads'][i]["Análise IA"] = resp
+                    if debug:
+                        st.session_state["debug_ia"].append(f"{empresa['Nome']}: {debug}")
+                    elif not eh_premium:
+                        marcar_ia_usada(st.session_state.get("chave_cliente", ""))
+                st.rerun()
 
     if st.session_state.get("debug_ia"):
         with st.expander("⚠️ Detalhes do erro da IA (DEBUG)", expanded=True):
