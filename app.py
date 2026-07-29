@@ -15,7 +15,7 @@ from docx import Document
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
-from supabase import create_client
+from supabase import create_client, ClientOptions
 
 # 1. Configuração da página (Primeiro comando Streamlit)
 st.set_page_config(
@@ -219,7 +219,12 @@ section[data-testid="stSidebar"] {
 def get_supabase():
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return None
-    return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    try:
+        opts = ClientOptions(flow_type="implicit")
+        return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY, options=opts)
+    except Exception:
+        # Se a versão da lib não aceitar esse parâmetro, cai pro padrão
+        return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 def garantir_registro_cliente(user_id, email, apelido=None, empresa=None, perfil_oferta=None):
     sb = get_supabase()
@@ -501,11 +506,33 @@ if "autenticado" not in st.session_state:
     if _qp.get("type") == "recovery" and _qp.get("token_hash"):
         tela_definir_nova_senha(_qp.get("token_hash"))
 
-    # Retorno do login com Google: a URL traz ?code=... (fluxo PKCE)
+    # Retorno do login com Google: pode vir como ?code=... (PKCE) ou access_token/refresh_token (implicit)
     if _qp.get("code"):
         sb = get_supabase()
         try:
             resp = sb.auth.exchange_code_for_session({"auth_code": _qp.get("code")})
+            dados_perfil = buscar_perfil_completo(resp.user.id)
+            garantir_registro_cliente(resp.user.id, resp.user.email, dados_perfil.get("apelido"))
+            st.session_state["autenticado"] = True
+            st.session_state["chave_cliente"] = resp.user.id
+            st.session_state["email_cliente"] = resp.user.email
+            st.session_state["nome_cliente"] = dados_perfil["apelido"] or resp.user.email.split("@")[0]
+            st.session_state["perfil_apelido"] = dados_perfil["apelido"]
+            st.session_state["perfil_empresa"] = dados_perfil["empresa"]
+            st.session_state["perfil_oferta"] = dados_perfil["perfil_oferta"]
+            st.session_state["perfil_carregado"] = True
+            if resp.session:
+                cookies["refresh_token"] = resp.session.refresh_token
+                cookies.save()
+            st.query_params.clear()
+            st.rerun()
+        except Exception as e:
+            st.error(f"Erro ao entrar com Google: {e}")
+
+    elif _qp.get("access_token") and _qp.get("refresh_token"):
+        sb = get_supabase()
+        try:
+            resp = sb.auth.set_session(_qp.get("access_token"), _qp.get("refresh_token"))
             dados_perfil = buscar_perfil_completo(resp.user.id)
             garantir_registro_cliente(resp.user.id, resp.user.email, dados_perfil.get("apelido"))
             st.session_state["autenticado"] = True
